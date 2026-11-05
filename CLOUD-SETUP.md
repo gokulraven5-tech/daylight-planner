@@ -8,9 +8,9 @@ Create a project in Supabase and copy its **Project URL** and **publishable key*
 
 ## 2. Create the private planner table
 
-Open the Supabase SQL Editor, paste in [`supabase-setup.sql`](./supabase-setup.sql), and run it. The table policies restrict reads and writes to the authenticated user's own rows. If you already ran an earlier version of this SQL, run the updated file again to create the private username profile table.
+Open the Supabase SQL Editor, paste in [`supabase-setup.sql`](./supabase-setup.sql), and run it. The table policies restrict private planner rows to their owner and shared-list data to list members. If you already ran an earlier version of this SQL, run the updated file again to create the username and collaboration tables and policies.
 
-Each account can choose a unique, case-insensitive username using 3–20 lowercase letters, numbers, or underscores. Usernames are only readable by their owner; the app does not provide public user search or sharing.
+Each account chooses a unique, case-insensitive username using 3–20 lowercase letters, numbers, or underscores after its first sign-in. People can invite someone to a shared list by exact username; usernames are not available through a public directory. List members can see and update shared tasks, while only the creator can invite people, rename or delete the list, and remove members. A member can leave a list.
 
 ## 3. Add the public project settings
 

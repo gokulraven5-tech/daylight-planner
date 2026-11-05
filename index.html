@@ -19,10 +19,11 @@
           <span>daylight</span>
         </a>
         <div class="topbar-right">
-          <span class="privacy-note"><span class="privacy-dot"></span> Just for you</span>
+          <span class="privacy-note"><span class="privacy-dot"></span> Personal + shared</span>
           <button class="cloud-account" id="cloud-account" type="button" aria-label="Cloud sync account">
             <span aria-hidden="true">☁</span><span id="cloud-status">Local only</span>
           </button>
+          <button class="username-tab" id="username-tab" type="button" aria-label="Set your username">Username</button>
           <button class="avatar" type="button" aria-label="Your personal planner">✿</button>
         </div>
       </header>
@@ -50,6 +51,9 @@
           </button>
           <button class="view-tab" id="weekly-view" type="button" aria-pressed="false">
             <span class="tab-doodle" aria-hidden="true">▤</span> This week
+          </button>
+          <button class="view-tab" id="collab-view" type="button" aria-pressed="false">
+            <span class="tab-doodle" aria-hidden="true">✿</span> Collab
           </button>
         </nav>
 
@@ -175,6 +179,78 @@
               <div class="note-footer"><span class="privacy-dot"></span> Private by nature</div>
             </section>
           </aside>
+        </section>
+
+        <section class="collab-dashboard" id="collab-dashboard" aria-label="Collaborative lists" hidden>
+          <div class="collab-heading">
+            <div>
+              <p class="eyebrow">A LITTLE SPACE, SHARED</p>
+              <h2>Our little lists <span aria-hidden="true">✿</span></h2>
+              <p>Keep your own planner private, and make a list together when you need one.</p>
+            </div>
+            <span class="collab-heading-doodle" aria-hidden="true">♡</span>
+          </div>
+          <div class="collab-signin-note" id="collab-signin-note" hidden>
+            <p>Sign in and choose a username to create or join a shared list.</p>
+            <button class="text-button" id="collab-signin" type="button">Open account settings ↗</button>
+          </div>
+          <form class="collab-create-form" id="collab-create-form" hidden>
+            <label class="visually-hidden" for="collab-list-name">Name your shared list</label>
+            <input id="collab-list-name" name="name" type="text" maxlength="60" placeholder="Give your shared list a name…" required>
+            <button type="submit">＋ Create a list</button>
+          </form>
+          <div class="collab-layout" id="collab-layout" hidden>
+            <aside class="collab-list-card" aria-label="Your shared lists">
+              <div class="collab-card-heading">
+                <h3>Shared with you</h3>
+                <span aria-hidden="true">✧</span>
+              </div>
+              <ul class="collab-list-nav" id="collab-list-nav"></ul>
+              <p class="collab-no-lists" id="collab-no-lists" hidden>No shared lists yet. Create one, then invite someone by their exact @username.</p>
+            </aside>
+            <section class="collab-detail-card" id="collab-detail-card" aria-label="Selected collaborative list">
+              <div class="collab-empty-state" id="collab-empty-state">
+                <span aria-hidden="true">☁</span>
+                <h3>Your shared space is ready</h3>
+                <p>Create a list or choose one you’re already part of.</p>
+              </div>
+              <div id="collab-list-detail" hidden>
+                <div class="collab-detail-heading">
+                  <div>
+                    <p class="eyebrow">MADE TOGETHER</p>
+                    <h3 id="collab-selected-name"></h3>
+                    <p id="collab-owner-note"></p>
+                  </div>
+                  <div class="collab-list-actions">
+                    <button class="collab-delete-list" id="collab-rename-list" type="button" hidden>Rename</button>
+                    <button class="collab-delete-list" id="collab-delete-list" type="button" hidden>Delete list</button>
+                    <button class="collab-delete-list" id="collab-leave-list" type="button" hidden>Leave list</button>
+                  </div>
+                </div>
+                <div class="collab-members-block">
+                  <div class="collab-card-heading"><h4>People in this list</h4><span aria-hidden="true">♡</span></div>
+                  <ul class="collab-member-list" id="collab-member-list"></ul>
+                  <form class="collab-invite-form" id="collab-invite-form" hidden>
+                    <label class="visually-hidden" for="collab-invite-username">Invite by username</label>
+                    <input id="collab-invite-username" name="username" type="text" maxlength="21" placeholder="@username" autocomplete="off" required>
+                    <button type="submit">Invite</button>
+                  </form>
+                  <p class="collab-invite-note" id="collab-invite-note" hidden>Only the list creator can invite people. Usernames are looked up exactly.</p>
+                </div>
+                <div class="collab-task-section">
+                  <div class="collab-card-heading"><h4>Things we’ll do</h4><span id="collab-task-count">0 left</span></div>
+                  <form class="collab-task-form" id="collab-task-form">
+                    <label class="visually-hidden" for="collab-task-title">Add a shared task</label>
+                    <input id="collab-task-title" name="title" type="text" maxlength="100" placeholder="Add a little thing to do…" required>
+                    <button type="submit" aria-label="Add shared task">＋</button>
+                  </form>
+                  <ul class="collab-task-list" id="collab-task-list"></ul>
+                  <p class="collab-task-empty" id="collab-task-empty" hidden>Nothing on the list yet. Add the first little thing ♡</p>
+                </div>
+              </div>
+            </section>
+          </div>
+          <p class="collab-feedback" id="collab-feedback" role="status" aria-live="polite"></p>
         </section>
       </main>
 

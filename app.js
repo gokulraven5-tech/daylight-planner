@@ -24,6 +24,8 @@ const elements = {
   todoView: $('#todo-view'),
   dailyView: $('#daily-view'),
   weeklyView: $('#weekly-view'),
+  collabView: $('#collab-view'),
+  usernameTab: $('#username-tab'),
   welcomeTitle: $('#welcome-title'),
   welcomeCopy: $('.welcome-copy'),
   dialog: $('#plan-dialog'),
@@ -51,6 +53,31 @@ const elements = {
   cloudUsernameSubmit: $('#cloud-username-submit'),
   cloudSignout: $('#cloud-signout'),
   cloudFeedback: $('#cloud-feedback'),
+  collabDashboard: $('#collab-dashboard'),
+  collabSigninNote: $('#collab-signin-note'),
+  collabSignin: $('#collab-signin'),
+  collabCreateForm: $('#collab-create-form'),
+  collabListName: $('#collab-list-name'),
+  collabLayout: $('#collab-layout'),
+  collabListNav: $('#collab-list-nav'),
+  collabNoLists: $('#collab-no-lists'),
+  collabEmptyState: $('#collab-empty-state'),
+  collabListDetail: $('#collab-list-detail'),
+  collabSelectedName: $('#collab-selected-name'),
+  collabOwnerNote: $('#collab-owner-note'),
+  collabRenameList: $('#collab-rename-list'),
+  collabDeleteList: $('#collab-delete-list'),
+  collabLeaveList: $('#collab-leave-list'),
+  collabMemberList: $('#collab-member-list'),
+  collabInviteForm: $('#collab-invite-form'),
+  collabInviteUsername: $('#collab-invite-username'),
+  collabInviteNote: $('#collab-invite-note'),
+  collabTaskForm: $('#collab-task-form'),
+  collabTaskTitle: $('#collab-task-title'),
+  collabTaskCount: $('#collab-task-count'),
+  collabTaskList: $('#collab-task-list'),
+  collabTaskEmpty: $('#collab-task-empty'),
+  collabFeedback: $('#collab-feedback'),
 };
 
 let selectedDate = new Date();
@@ -65,6 +92,11 @@ let cloudClient = null;
 let cloudUser = null;
 let cloudUsername = null;
 let cloudChannel = null;
+let collabLists = [];
+let collabTasks = [];
+let collabMembers = [];
+let selectedCollabListId = null;
+let collabRefreshPromise = null;
 let activeLocalUserId = null;
 let cloudReady = false;
 let cloudLoadingUserId = null;
@@ -209,6 +241,12 @@ function refreshCloudDialog() {
   elements.cloudAuthControls.hidden = !configured || Boolean(cloudUser);
   elements.cloudUsernameForm.hidden = !configured || !cloudUser;
   elements.cloudSignout.hidden = !configured || !cloudUser;
+  elements.usernameTab.textContent = cloudUser
+    ? cloudUsername ? `@${cloudUsername}` : 'Choose name'
+    : 'Username';
+  elements.usernameTab.setAttribute('aria-label', cloudUsername
+    ? `Manage username @${cloudUsername}`
+    : 'Sign in and choose a username');
   if (document.activeElement !== elements.cloudUsername) {
     elements.cloudUsername.value = cloudUsername || '';
   }
@@ -224,7 +262,7 @@ function refreshCloudDialog() {
       : 'Choose a unique username for your planner. You can still sync your plans while you set it up.';
     return;
   }
-  elements.cloudExplanation.textContent = 'Sign in with an email link to sync your planner across devices. No password needed.';
+  elements.cloudExplanation.textContent = 'Create an account or sign in with an email link. The first time you sign in, choose your unique username.';
   elements.cloudSubmit.hidden = false;
 }
 
@@ -324,8 +362,24 @@ function subscribeToCloud(userId) {
       if (typeof payload.new?.username === 'string') {
         cloudUsername = payload.new.username;
         refreshCloudDialog();
+        renderCollab();
       }
     })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'planner_collab_lists',
+    }, () => refreshCollabData())
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'planner_collab_members',
+    }, () => refreshCollabData())
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'planner_collab_tasks',
+    }, () => refreshCollabData())
     .subscribe((status, error) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error('Cloud live updates could not connect:', error);
@@ -333,6 +387,120 @@ function subscribeToCloud(userId) {
         showToast('Cloud live updates could not connect. Your changes remain saved on this device.');
       }
     });
+}
+
+function selectedCollabList() {
+    return collabLists.find((list) => list.id === selectedCollabListId) || null;
+}
+
+function renderCollab() {
+    const signedIn = Boolean(cloudUser);
+    const canCreate = signedIn && Boolean(cloudUsername);
+    const selectedList = selectedCollabList();
+    const currentMembership = collabMembers.find((member) => member.user_id === cloudUser?.id);
+    const isOwner = currentMembership?.role === 'owner';
+    elements.collabSigninNote.hidden = canCreate;
+    elements.collabCreateForm.hidden = !canCreate;
+    elements.collabLayout.hidden = !signedIn;
+    elements.collabSigninNote.querySelector('p').textContent = signedIn
+      ? 'Choose a username before creating lists or inviting people.'
+      : 'Sign in and choose a username to create or join a shared list.';
+    elements.collabSignin.hidden = canCreate;
+    elements.collabNoLists.hidden = collabLists.length > 0;
+    elements.collabListNav.innerHTML = collabLists.map((list) => {
+      return `<li><button type="button" data-collab-list="${escapeHTML(list.id)}" aria-current="${list.id === selectedCollabListId}"><strong>${escapeHTML(list.name)}</strong><span>${list.owner_id === cloudUser?.id ? 'created by you' : 'shared with you'}</span></button></li>`;
+    }).join('');
+    elements.collabEmptyState.hidden = !signedIn || Boolean(selectedList);
+    elements.collabListDetail.hidden = !signedIn || !selectedList;
+    if (!selectedList) return;
+
+    elements.collabSelectedName.textContent = selectedList.name;
+    elements.collabOwnerNote.textContent = isOwner ? 'You made this list.' : 'You’re a member of this shared list.';
+    elements.collabRenameList.hidden = !isOwner;
+    elements.collabDeleteList.hidden = !isOwner;
+    elements.collabLeaveList.hidden = isOwner || !currentMembership;
+    elements.collabInviteForm.hidden = !isOwner;
+    elements.collabInviteNote.hidden = isOwner;
+    elements.collabMemberList.innerHTML = collabMembers.map((member) => `
+      <li>
+        @${escapeHTML(member.username)}
+        <span>${member.role === 'owner' ? 'creator' : 'member'}</span>
+        ${isOwner && member.role !== 'owner' ? `<button type="button" data-remove-collab-member="${escapeHTML(member.user_id)}" aria-label="Remove @${escapeHTML(member.username)}">×</button>` : ''}
+      </li>
+    `).join('');
+    const remaining = collabTasks.filter((task) => !task.done).length;
+    elements.collabTaskCount.textContent = `${remaining} left`;
+    elements.collabTaskEmpty.hidden = collabTasks.length > 0;
+    elements.collabTaskList.innerHTML = collabTasks.map((task) => `
+      <li class="collab-task-item${task.done ? ' is-done' : ''}">
+        <label class="collab-task-check">
+          <input type="checkbox" data-collab-task-toggle="${escapeHTML(task.id)}" ${task.done ? 'checked' : ''}>
+          <span>${escapeHTML(task.title)}</span>
+        </label>
+        <button class="collab-task-delete" type="button" data-collab-task-delete="${escapeHTML(task.id)}" aria-label="Remove shared task: ${escapeHTML(task.title)}">×</button>
+      </li>
+    `).join('');
+}
+
+async function loadCollabListDetails(listId) {
+    if (!cloudClient || !cloudUser || !listId) {
+      collabTasks = [];
+      collabMembers = [];
+      renderCollab();
+      return;
+    }
+    const [tasksResult, membersResult] = await Promise.all([
+      cloudClient
+        .from('planner_collab_tasks')
+        .select('id, list_id, title, done, created_by, created_at')
+        .eq('list_id', listId)
+        .order('created_at', { ascending: true }),
+      cloudClient.rpc('list_planner_collab_members', { p_list_id: listId }),
+    ]);
+    if (tasksResult.error) throw tasksResult.error;
+    if (membersResult.error) throw membersResult.error;
+    collabTasks = tasksResult.data || [];
+    collabMembers = membersResult.data || [];
+    renderCollab();
+}
+
+async function loadCollabLists() {
+    if (!cloudClient || !cloudUser) {
+      collabLists = [];
+      selectedCollabListId = null;
+      collabTasks = [];
+      collabMembers = [];
+      renderCollab();
+      return;
+    }
+    const { data, error } = await cloudClient
+      .from('planner_collab_lists')
+      .select('id, name, owner_id, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    collabLists = data || [];
+    if (!collabLists.some((list) => list.id === selectedCollabListId)) {
+      selectedCollabListId = collabLists[0]?.id || null;
+    }
+    if (selectedCollabListId) await loadCollabListDetails(selectedCollabListId);
+    else {
+      collabTasks = [];
+      collabMembers = [];
+    }
+    renderCollab();
+}
+
+function refreshCollabData() {
+    if (!cloudUser || collabRefreshPromise) return collabRefreshPromise;
+    collabRefreshPromise = loadCollabLists()
+      .catch((error) => {
+        console.error('Unable to refresh collaborative lists:', error);
+        elements.collabFeedback.textContent = `Shared lists could not refresh: ${error.message || 'Check your connection.'}`;
+      })
+      .finally(() => {
+        collabRefreshPromise = null;
+      });
+    return collabRefreshPromise;
 }
 
 async function loadCloudAccount(user) {
@@ -406,7 +574,16 @@ async function loadCloudAccount(user) {
   renderTodos();
   subscribeToCloud(user.id);
   scheduleCloudSync();
+  await loadCollabLists().catch((error) => {
+    console.error('Unable to load collaborative lists:', error);
+    elements.collabFeedback.textContent = `Shared lists could not load: ${error.message || 'Check your database setup.'}`;
+  });
   refreshCloudDialog();
+  if (!cloudUsername) {
+    if (!elements.cloudDialog.open) elements.cloudDialog.showModal();
+    elements.cloudUsername.focus();
+    elements.cloudFeedback.textContent = 'Your account is ready. Choose a unique username to finish setting it up.';
+  }
   elements.cloudFeedback.textContent = 'Your device data and cloud data are together.';
 }
 
@@ -416,6 +593,10 @@ function handleCloudSession(user) {
     cloudChannel = null;
     cloudUser = null;
     cloudUsername = null;
+    collabLists = [];
+    collabTasks = [];
+    collabMembers = [];
+    selectedCollabListId = null;
     cloudReady = false;
     cloudDirty = false;
     activeLocalUserId = null;
@@ -424,6 +605,7 @@ function handleCloudSession(user) {
     setCloudStatus(SUPABASE_URL ? 'Signed out' : 'Set up sync', 'Cloud sync account');
     render();
     renderTodos();
+    renderCollab();
     refreshCloudDialog();
     return Promise.resolve();
   }
@@ -715,19 +897,29 @@ function render() {
   elements.dailyView.setAttribute('aria-pressed', String(isDaily));
   elements.weeklyView.classList.toggle('is-active', activeView === 'weekly');
   elements.weeklyView.setAttribute('aria-pressed', String(activeView === 'weekly'));
+  elements.collabView.classList.toggle('is-active', activeView === 'collab');
+  elements.collabView.setAttribute('aria-pressed', String(activeView === 'collab'));
   elements.todoDashboard.hidden = !isTodo;
-  elements.grid.hidden = isTodo;
-  $('#add-plan').hidden = isTodo;
+  elements.grid.hidden = isTodo || activeView === 'collab';
+  elements.collabDashboard.hidden = activeView !== 'collab';
+  $('#add-plan').hidden = isTodo || activeView === 'collab';
   elements.welcomeTitle.innerHTML = isTodo
     ? 'Your little list, <em>your pace.</em>'
-    : isDaily ? 'Make today <em>yours.</em>' : 'Your week, <em>gently.</em>';
+    : activeView === 'collab' ? 'Little plans, <em>together.</em>'
+      : isDaily ? 'Make today <em>yours.</em>' : 'Your week, <em>gently.</em>';
   elements.welcomeCopy.textContent = isTodo
     ? 'A soft place to gather all the things on your mind.'
-    : isDaily ? 'A little space for everything on your mind.' : 'Little plans, soft reminders, room to breathe.';
+    : activeView === 'collab' ? 'Your own planner stays yours. These lists are for sharing.'
+      : isDaily ? 'A little space for everything on your mind.' : 'Little plans, soft reminders, room to breathe.';
   if (isTodo) {
     elements.todayLabel.textContent = 'A LITTLE SPACE FOR WHAT MATTERS';
     elements.grid.setAttribute('aria-label', 'Your planner');
     renderTodos();
+    return;
+  }
+  if (activeView === 'collab') {
+    elements.todayLabel.textContent = 'A LITTLE SPACE, SHARED';
+    renderCollab();
     return;
   }
   elements.grid.classList.toggle('daily-mode', isDaily);
@@ -777,6 +969,12 @@ elements.weeklyView.addEventListener('click', () => {
   render();
 });
 
+elements.collabView.addEventListener('click', () => {
+  activeView = 'collab';
+  render();
+  if (cloudUser) refreshCollabData();
+});
+
 elements.todoView.addEventListener('click', () => {
   activeView = 'todo';
   render();
@@ -788,6 +986,8 @@ $('#export-backup').addEventListener('click', exportBackup);
 $('#restore-backup').addEventListener('click', () => elements.backupFile.click());
 elements.backupFile.addEventListener('change', () => restoreBackup(elements.backupFile.files[0]));
 elements.cloudAccount.addEventListener('click', openCloudDialog);
+elements.usernameTab.addEventListener('click', openCloudDialog);
+elements.collabSignin.addEventListener('click', openCloudDialog);
 $('#close-cloud-dialog').addEventListener('click', () => elements.cloudDialog.close());
 elements.cloudDialog.addEventListener('click', (event) => {
   if (event.target === elements.cloudDialog) elements.cloudDialog.close();
@@ -847,6 +1047,7 @@ elements.cloudUsernameForm.addEventListener('submit', async (event) => {
     if (error) throw error;
     cloudUsername = username;
     refreshCloudDialog();
+    renderCollab();
     elements.cloudFeedback.textContent = `Your username is saved as @${username}.`;
   } catch (error) {
     console.error('Unable to save cloud username:', error);
@@ -854,6 +1055,224 @@ elements.cloudUsernameForm.addEventListener('submit', async (event) => {
   } finally {
     elements.cloudUsernameSubmit.disabled = false;
   }
+});
+
+elements.collabCreateForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!cloudUser || !cloudUsername) {
+    elements.collabFeedback.textContent = 'Sign in and choose a username before creating a shared list.';
+    return;
+  }
+  const name = elements.collabListName.value.trim();
+  if (!name) return;
+  const submit = elements.collabCreateForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  elements.collabFeedback.textContent = 'Making your shared list…';
+  try {
+    const { data, error } = await cloudClient.rpc('create_planner_collab_list', { p_name: name });
+    if (error) throw error;
+    selectedCollabListId = data;
+    elements.collabCreateForm.reset();
+    await loadCollabLists();
+    elements.collabFeedback.textContent = 'Your shared list is ready. Invite someone by their exact username.';
+  } catch (error) {
+    console.error('Unable to create collaborative list:', error);
+    elements.collabFeedback.textContent = `Could not create the shared list: ${error.message || 'Check your connection.'}`;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+elements.collabListNav.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-collab-list]');
+  if (!button) return;
+  selectedCollabListId = button.dataset.collabList;
+  elements.collabFeedback.textContent = '';
+  try {
+    await loadCollabListDetails(selectedCollabListId);
+  } catch (error) {
+    console.error('Unable to load collaborative list:', error);
+    elements.collabFeedback.textContent = `Could not open this list: ${error.message || 'Check your connection.'}`;
+  }
+});
+
+elements.collabInviteForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!selectedCollabListId) return;
+  const username = elements.collabInviteUsername.value.trim().replace(/^@/, '').toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+    elements.collabFeedback.textContent = 'Enter a username with 3–20 letters, numbers, or underscores.';
+    return;
+  }
+  const submit = elements.collabInviteForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  elements.collabFeedback.textContent = `Inviting @${username}…`;
+  try {
+    const { data, error } = await cloudClient.rpc('invite_planner_collab_user', {
+      p_list_id: selectedCollabListId,
+      p_username: username,
+    });
+    if (error) throw error;
+    elements.collabInviteForm.reset();
+    await loadCollabLists();
+    elements.collabFeedback.textContent = `@${data} can now see and update this list.`;
+  } catch (error) {
+    console.error('Unable to invite collaborative list member:', error);
+    const message = error.code === 'P0001'
+      ? error.message
+      : error.message || 'Check that the username exists and try again.';
+    elements.collabFeedback.textContent = `Could not invite that person: ${message}`;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+elements.collabDeleteList.addEventListener('click', async () => {
+  const list = selectedCollabList();
+  if (!list || !window.confirm(`Delete “${list.name}” and its shared tasks for everyone?`)) return;
+  elements.collabDeleteList.disabled = true;
+  try {
+    const { error } = await cloudClient.from('planner_collab_lists').delete().eq('id', list.id);
+    if (error) throw error;
+    selectedCollabListId = null;
+    await loadCollabLists();
+    elements.collabFeedback.textContent = 'The shared list was deleted.';
+  } catch (error) {
+    console.error('Unable to delete collaborative list:', error);
+    elements.collabFeedback.textContent = `Could not delete the list: ${error.message || 'Check your connection.'}`;
+  } finally {
+    elements.collabDeleteList.disabled = false;
+  }
+});
+
+elements.collabRenameList.addEventListener('click', async () => {
+  const list = selectedCollabList();
+  if (!list) return;
+  const name = window.prompt('What would you like to call this shared list?', list.name)?.trim();
+  if (!name || name === list.name) return;
+  if (name.length > 60) {
+    elements.collabFeedback.textContent = 'List names can be up to 60 characters.';
+    return;
+  }
+  elements.collabRenameList.disabled = true;
+  try {
+    const { error } = await cloudClient
+      .from('planner_collab_lists')
+      .update({ name })
+      .eq('id', list.id);
+    if (error) throw error;
+    await loadCollabLists();
+    elements.collabFeedback.textContent = 'The shared list name was updated.';
+  } catch (error) {
+    console.error('Unable to rename collaborative list:', error);
+    elements.collabFeedback.textContent = `Could not rename the list: ${error.message || 'Check your connection.'}`;
+  } finally {
+    elements.collabRenameList.disabled = false;
+  }
+});
+
+elements.collabLeaveList.addEventListener('click', async () => {
+  const list = selectedCollabList();
+  if (!list || !window.confirm(`Leave “${list.name}”? You’ll no longer see its shared tasks.`)) return;
+  elements.collabLeaveList.disabled = true;
+  try {
+    const { error } = await cloudClient.from('planner_collab_members')
+      .delete()
+      .eq('list_id', list.id)
+      .eq('user_id', cloudUser.id);
+    if (error) throw error;
+    selectedCollabListId = null;
+    await loadCollabLists();
+    elements.collabFeedback.textContent = 'You left the shared list.';
+  } catch (error) {
+    console.error('Unable to leave collaborative list:', error);
+    elements.collabFeedback.textContent = `Could not leave the list: ${error.message || 'Check your connection.'}`;
+  } finally {
+    elements.collabLeaveList.disabled = false;
+  }
+});
+
+elements.collabMemberList.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-remove-collab-member]');
+  const list = selectedCollabList();
+  if (!button || !list || !window.confirm('Remove this person from the shared list?')) return;
+  button.disabled = true;
+  try {
+    const { error } = await cloudClient.from('planner_collab_members')
+      .delete()
+      .eq('list_id', list.id)
+      .eq('user_id', button.dataset.removeCollabMember);
+    if (error) throw error;
+    await loadCollabLists();
+    elements.collabFeedback.textContent = 'The person was removed from this list.';
+  } catch (error) {
+    console.error('Unable to remove collaborative list member:', error);
+    elements.collabFeedback.textContent = `Could not remove this person: ${error.message || 'Check your connection.'}`;
+  }
+});
+
+elements.collabTaskForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const list = selectedCollabList();
+  const title = elements.collabTaskTitle.value.trim();
+  if (!list || !title) return;
+  const submit = elements.collabTaskForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    const { error } = await cloudClient.from('planner_collab_tasks').insert({
+      list_id: list.id,
+      title,
+      done: false,
+      created_by: cloudUser.id,
+    });
+    if (error) throw error;
+    elements.collabTaskForm.reset();
+    await loadCollabListDetails(list.id);
+  } catch (error) {
+    console.error('Unable to add shared task:', error);
+    elements.collabFeedback.textContent = `Could not add that task: ${error.message || 'Check your connection.'}`;
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+elements.collabTaskList.addEventListener('change', async (event) => {
+  const checkbox = event.target.closest('[data-collab-task-toggle]');
+  if (!checkbox) return;
+  const task = collabTasks.find((item) => item.id === checkbox.dataset.collabTaskToggle);
+  if (!task) return;
+  const { error } = await cloudClient.from('planner_collab_tasks')
+    .update({ done: checkbox.checked })
+    .eq('id', task.id)
+    .eq('list_id', task.list_id);
+  if (error) {
+    console.error('Unable to update shared task:', error);
+    elements.collabFeedback.textContent = `Could not update that task: ${error.message || 'Check your connection.'}`;
+    checkbox.checked = task.done;
+    return;
+  }
+  task.done = checkbox.checked;
+  renderCollab();
+});
+
+elements.collabTaskList.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-collab-task-delete]');
+  if (!button) return;
+  const task = collabTasks.find((item) => item.id === button.dataset.collabTaskDelete);
+  if (!task) return;
+  button.disabled = true;
+  const { error } = await cloudClient.from('planner_collab_tasks')
+    .delete()
+    .eq('id', task.id)
+    .eq('list_id', task.list_id);
+  if (error) {
+    console.error('Unable to remove shared task:', error);
+    elements.collabFeedback.textContent = `Could not remove that task: ${error.message || 'Check your connection.'}`;
+    button.disabled = false;
+    return;
+  }
+  collabTasks = collabTasks.filter((item) => item.id !== task.id);
+  renderCollab();
 });
 
 elements.cloudSignout.addEventListener('click', async () => {

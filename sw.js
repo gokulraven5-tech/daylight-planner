@@ -1,4 +1,4 @@
-const CACHE_NAME = 'daylight-shell-v11';
+const CACHE_NAME = 'daylight-shell-v12';
 const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './supabase-config.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
