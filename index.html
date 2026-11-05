@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f7f3ed">
+    <meta name="description" content="A gentle little planner for making room for what matters.">
+    <title>Daylight — your gentle daily planner</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Daylight home">
+          <span class="brand-mark" aria-hidden="true">✳</span>
+          <span>daylight</span>
+        </a>
+        <div class="topbar-right">
+          <span class="privacy-note"><span class="privacy-dot"></span> Just for you</span>
+          <button class="cloud-account" id="cloud-account" type="button" aria-label="Cloud sync account">
+            <span aria-hidden="true">☁</span><span id="cloud-status">Local only</span>
+          </button>
+          <button class="avatar" type="button" aria-label="Your personal planner">✿</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="welcome-row" aria-labelledby="welcome-title">
+          <div>
+            <p class="eyebrow" id="today-label"></p>
+            <h1 id="welcome-title">Your little list, <em>your pace.</em></h1>
+            <p class="welcome-copy">A soft place to gather all the things on your mind.</p>
+          </div>
+          <div class="sun-illustration" aria-hidden="true">
+            <span class="sun"></span>
+            <span class="sun-cloud cloud-one"></span>
+            <span class="sun-cloud cloud-two"></span>
+          </div>
+        </section>
+
+        <nav class="view-switch" aria-label="Planner view" data-view="todo">
+          <button class="view-tab is-active" id="todo-view" type="button" aria-pressed="true">
+            <span class="tab-doodle" aria-hidden="true">♡</span> To-do
+          </button>
+          <button class="view-tab" id="daily-view" type="button" aria-pressed="false">
+            <span class="tab-doodle" aria-hidden="true">☼</span> Today
+          </button>
+          <button class="view-tab" id="weekly-view" type="button" aria-pressed="false">
+            <span class="tab-doodle" aria-hidden="true">▤</span> This week
+          </button>
+        </nav>
+
+        <section class="todo-dashboard" id="todo-dashboard" aria-label="Your to-do dashboard">
+          <div class="todo-main-column">
+            <section class="todo-card" aria-labelledby="todo-title">
+              <div class="todo-heading">
+                <div>
+                  <p class="eyebrow">THE LITTLE THINGS</p>
+                  <h2 id="todo-title">My to-do list <span aria-hidden="true">✳</span></h2>
+                  <p class="todo-subtitle">A small step is still a step forward.</p>
+                </div>
+                <span class="todo-count" id="todo-count">0 left</span>
+              </div>
+              <form class="todo-form" id="todo-form">
+                <label class="visually-hidden" for="todo-input">Add a to-do item</label>
+                <input id="todo-input" name="todo" type="text" maxlength="100" placeholder="Something small you want to do…" autocomplete="off" required>
+                <button type="submit" aria-label="Add to-do item">＋</button>
+              </form>
+              <ul class="todo-list" id="todo-list" aria-live="polite"></ul>
+              <p class="todo-empty" id="todo-empty">A tiny list is still a lovely start <span aria-hidden="true">♡</span></p>
+              <div class="todo-footer"><span aria-hidden="true">✎</span> Done is better than perfect.</div>
+            </section>
+          </div>
+          <aside class="todo-side-column">
+            <section class="moodboard" aria-label="Little moments of inspiration">
+              <article class="photo-card photo-card-sunrise">
+                <span class="photo-sparkle" aria-hidden="true">✳</span>
+                <div class="landscape-art" aria-hidden="true">
+                  <span class="landscape-sun"></span>
+                  <span class="landscape-hill hill-back"></span>
+                  <span class="landscape-hill hill-front"></span>
+                  <span class="landscape-flower">✿</span>
+                </div>
+                <div class="photo-caption"><span>01 / SLOW MORNINGS</span><strong>Begin softly.</strong></div>
+              </article>
+              <div class="photo-pair">
+                <article class="photo-card photo-card-flower">
+                  <span class="flower-art" aria-hidden="true">✿</span>
+                  <span class="small-photo-caption">GROW AT YOUR PACE</span>
+                </article>
+                <article class="photo-card photo-card-note">
+                  <span class="note-doodle" aria-hidden="true">☁</span>
+                  <span class="small-photo-caption">MAKE ROOM FOR JOY</span>
+                </article>
+              </div>
+              <p class="moodboard-note">a tiny moodboard for today <span aria-hidden="true">↗</span></p>
+            </section>
+            <section class="quote-card">
+              <p class="side-title">a gentle reminder</p>
+              <p class="daily-reminder">You don’t have to do it all. Just the next little thing.</p>
+              <p class="priority-line"><span>♡</span> Be kind to yourself today</p>
+              <span class="quote-flower" aria-hidden="true">✿</span>
+            </section>
+            <section class="todo-tools">
+              <p>Your list is saved privately on this device.</p>
+              <div class="backup-actions">
+                <button class="backup-button" id="export-backup" type="button">Download backup</button>
+                <button class="backup-button" id="restore-backup" type="button">Restore backup</button>
+                <input id="backup-file" class="visually-hidden" type="file" accept="application/json,.json">
+              </div>
+              <div class="note-footer"><span class="privacy-dot"></span> Just yours, always</div>
+            </section>
+          </aside>
+        </section>
+
+        <section class="planner-grid" id="planner-grid" aria-label="Your daily planner">
+          <div class="main-column">
+            <section class="date-card" id="date-card" aria-label="Choose a day">
+              <button class="date-arrow" id="previous-day" type="button" aria-label="Previous day">←</button>
+              <div class="date-current">
+                <span class="date-weekday" id="selected-weekday"></span>
+                <span class="date-full" id="selected-date"></span>
+              </div>
+              <button class="date-arrow" id="next-day" type="button" aria-label="Next day">→</button>
+              <button class="today-button" id="go-today" type="button">Today</button>
+            </section>
+
+            <section class="agenda-card" aria-labelledby="agenda-title">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow" id="agenda-eyebrow">A LITTLE PLAN FOR TODAY</p>
+                  <h2 id="agenda-title">Today, at a glance</h2>
+                </div>
+                <span class="task-count" id="task-count">0 plans</span>
+              </div>
+
+              <div class="progress-wrap" aria-label="Planner progress">
+                <div class="progress-track"><span class="progress-fill" id="progress-fill"></span></div>
+                <span class="progress-label" id="progress-label">One step at a time</span>
+              </div>
+
+              <div class="agenda-list" id="agenda-list"></div>
+              <div class="paper-note" id="paper-note">
+                <span aria-hidden="true">✎</span> little by little is still getting there
+              </div>
+            </section>
+
+          </div>
+
+          <aside class="side-column">
+            <section class="quote-card">
+              <p class="side-title">a gentle reminder</p>
+              <p class="daily-reminder">You don’t have to do it all. Just the next little thing.</p>
+              <p class="priority-line"><span>♡</span> Be kind to yourself today</p>
+              <span class="quote-flower" aria-hidden="true">✿</span>
+            </section>
+            <section class="priority-card">
+              <p class="side-title">little priorities</p>
+              <p class="priority-line"><span>01</span> Make time for yourself</p>
+              <p class="priority-line"><span>02</span> Do one thing at a time</p>
+              <p class="priority-line"><span>03</span> Leave room for joy</p>
+            </section>
+            <section class="note-card">
+              <div class="note-heading"><span aria-hidden="true">☼</span><h2>little habits</h2></div>
+              <div class="habit-list">
+                <label><input type="checkbox"> Drink some water</label>
+                <label><input type="checkbox"> Step outside</label>
+                <label><input type="checkbox"> Read a little</label>
+                <label><input type="checkbox"> Wind down early</label>
+              </div>
+              <p class="storage-copy">Your plans stay on this device. Switch to To-do to back them up or restore them.</p>
+              <div class="note-footer"><span class="privacy-dot"></span> Private by nature</div>
+            </section>
+          </aside>
+        </section>
+      </main>
+
+      <button class="add-button" id="add-plan" type="button"><span aria-hidden="true">＋</span> Add a plan</button>
+
+      <dialog class="plan-dialog" id="plan-dialog" aria-labelledby="dialog-title">
+        <form id="plan-form">
+          <div class="dialog-top">
+            <div>
+              <p class="eyebrow">MAKE A LITTLE SPACE</p>
+              <h2 id="dialog-title">Add a plan</h2>
+            </div>
+            <button class="close-button" id="close-dialog" type="button" aria-label="Close">×</button>
+          </div>
+          <label class="field-label" for="plan-title">What’s on your mind?</label>
+          <input id="plan-title" name="title" type="text" maxlength="80" placeholder="e.g. A slow morning walk" required autocomplete="off">
+          <div class="field-row">
+            <div class="field-group">
+              <label class="field-label" for="plan-time">When?</label>
+              <input id="plan-time" name="time" type="time" value="09:00" required>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="plan-category">A little category</label>
+              <select id="plan-category" name="category">
+                <option value="Personal">Personal</option>
+                <option value="Work">Work</option>
+                <option value="Wellbeing">Wellbeing</option>
+                <option value="Home">Home</option>
+                <option value="Study">Study</option>
+              </select>
+            </div>
+          </div>
+          <label class="field-label" for="plan-note">A note, if you like <span class="optional">(optional)</span></label>
+          <textarea id="plan-note" name="note" rows="2" maxlength="180" placeholder="Anything you want to remember…"></textarea>
+          <button class="save-button" type="submit">Save this plan <span aria-hidden="true">✳</span></button>
+        </form>
+      </dialog>
+
+      <dialog class="cloud-dialog" id="cloud-dialog" aria-labelledby="cloud-dialog-title">
+        <div class="cloud-dialog-content">
+          <div class="dialog-top">
+            <div>
+              <p class="eyebrow">YOUR PLANS, WHEREVER YOU ARE</p>
+              <h2 id="cloud-dialog-title">Cloud sync</h2>
+            </div>
+            <button class="close-button" id="close-cloud-dialog" type="button" aria-label="Close">×</button>
+          </div>
+          <p class="cloud-explanation" id="cloud-explanation"></p>
+          <div class="cloud-setup-note" id="cloud-setup-note" hidden>
+            <p>To switch cloud sync on, add your Supabase project URL and publishable key to <code>supabase-config.js</code>, then run the SQL in <code>supabase-setup.sql</code> in your Supabase project.</p>
+            <a href="./CLOUD-SETUP.md" target="_blank" rel="noreferrer">Open the setup guide ↗</a>
+          </div>
+          <div id="cloud-auth-controls">
+            <form id="cloud-signin-form">
+              <label class="field-label" for="cloud-email">Email address</label>
+              <input id="cloud-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+              <button class="save-button" id="cloud-submit" type="submit">Email me a sign-in link <span aria-hidden="true">✉</span></button>
+            </form>
+          </div>
+          <form class="cloud-username-controls" id="cloud-username-form" hidden>
+            <label class="field-label" for="cloud-username">Your unique username</label>
+            <div class="username-input-wrap"><span aria-hidden="true">@</span><input id="cloud-username" name="username" type="text" minlength="3" maxlength="20" pattern="[A-Za-z0-9_]{3,20}" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="cloud-username-help" required></div>
+            <p class="username-help" id="cloud-username-help">Use 3–20 letters, numbers, or underscores. Usernames are unique and can be changed later.</p>
+            <button class="save-button" id="cloud-username-submit" type="submit">Save username <span aria-hidden="true">✳</span></button>
+          </form>
+          <button class="cloud-signout" id="cloud-signout" type="button" hidden>Sign out of cloud sync</button>
+          <p class="cloud-feedback" id="cloud-feedback" role="status" aria-live="polite"></p>
+        </div>
+      </dialog>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <footer class="footer">Made for your days, just as they are <span aria-hidden="true">♡</span></footer>
+    </div>
+  </body>
+</html>
