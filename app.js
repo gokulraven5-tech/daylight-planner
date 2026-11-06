@@ -4,6 +4,7 @@ const STORAGE_KEY = 'daylight-plans-v1';
 const TODO_STORAGE_KEY = 'daylight-todos-v1';
 const ANONYMOUS_MIGRATION_KEY = 'daylight-anonymous-migrated-v1';
 const PENDING_SYNC_KEY = 'daylight-cloud-pending-v1';
+const PENDING_USERNAME_KEY = 'daylight-cloud-pending-username-v1';
 const $ = (selector) => document.querySelector(selector);
 
 const elements = {
@@ -44,6 +45,7 @@ const elements = {
   cloudDialog: $('#cloud-dialog'),
   cloudForm: $('#cloud-signin-form'),
   cloudEmail: $('#cloud-email'),
+  cloudUsernameIntent: $('#cloud-signin-username'),
   cloudExplanation: $('#cloud-explanation'),
   cloudSetupNote: $('#cloud-setup-note'),
   cloudAuthControls: $('#cloud-auth-controls'),
@@ -91,6 +93,8 @@ let toastTimer;
 let cloudClient = null;
 let cloudUser = null;
 let cloudUsername = null;
+let cloudUsernameDraft = null;
+let cloudUsernameSetupFeedback = '';
 let cloudChannel = null;
 let collabLists = [];
 let collabTasks = [];
@@ -247,8 +251,9 @@ function refreshCloudDialog() {
   elements.usernameTab.setAttribute('aria-label', cloudUsername
     ? `Manage username @${cloudUsername}`
     : 'Sign in and choose a username');
+  elements.usernameTab.title = cloudUsername ? `@${cloudUsername}` : 'Sign in and choose a username';
   if (document.activeElement !== elements.cloudUsername) {
-    elements.cloudUsername.value = cloudUsername || '';
+    elements.cloudUsername.value = cloudUsername || cloudUsernameDraft || '';
   }
   elements.cloudUsernameSubmit.textContent = cloudUsername ? 'Update username ✳' : 'Save username ✳';
   elements.cloudFeedback.textContent = '';
@@ -262,7 +267,7 @@ function refreshCloudDialog() {
       : 'Choose a unique username for your planner. You can still sync your plans while you set it up.';
     return;
   }
-  elements.cloudExplanation.textContent = 'Create an account or sign in with an email link. The first time you sign in, choose your unique username.';
+  elements.cloudExplanation.textContent = 'Create an account or sign in with an email link. Choose a username now for a new account, or leave it blank and choose one after signing in.';
   elements.cloudSubmit.hidden = false;
 }
 
@@ -362,6 +367,7 @@ function subscribeToCloud(userId) {
       if (typeof payload.new?.username === 'string') {
         cloudUsername = payload.new.username;
         refreshCloudDialog();
+        render();
         renderCollab();
       }
     })
@@ -558,6 +564,36 @@ async function loadCloudAccount(user) {
   }
 
   cloudUsername = profile?.username || null;
+  cloudUsernameSetupFeedback = '';
+  if (cloudUsername) {
+    localStorage.removeItem(PENDING_USERNAME_KEY);
+    cloudUsernameDraft = null;
+  } else {
+    const pendingUsername = localStorage.getItem(PENDING_USERNAME_KEY);
+    if (pendingUsername && /^[a-z0-9_]{3,20}$/.test(pendingUsername)) {
+      cloudUsernameDraft = pendingUsername;
+      const { error: usernameError } = await cloudClient
+        .from('planner_profiles')
+        .upsert({
+          user_id: user.id,
+          username: pendingUsername,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      if (usernameError) {
+        console.error('Unable to save the requested username after sign-in:', usernameError);
+        cloudUsernameSetupFeedback = usernameError.code === '23505'
+          ? `@${pendingUsername} is already taken. Choose another username.`
+          : `Could not save @${pendingUsername}: ${usernameError.message || 'Check your connection and try again.'}`;
+        if (usernameError.code === '23505') localStorage.removeItem(PENDING_USERNAME_KEY);
+      } else {
+        cloudUsername = pendingUsername;
+        cloudUsernameDraft = null;
+        localStorage.removeItem(PENDING_USERNAME_KEY);
+      }
+    } else {
+      cloudUsernameDraft = null;
+    }
+  }
   const mergeLocalChanges = hasPendingChanges || shouldImportAnonymous;
   plans = data
     ? mergeLocalChanges ? mergeById(data.plans, localPlans) : data.plans
@@ -582,9 +618,10 @@ async function loadCloudAccount(user) {
   if (!cloudUsername) {
     if (!elements.cloudDialog.open) elements.cloudDialog.showModal();
     elements.cloudUsername.focus();
-    elements.cloudFeedback.textContent = 'Your account is ready. Choose a unique username to finish setting it up.';
+    elements.cloudFeedback.textContent = cloudUsernameSetupFeedback ||
+      'Your account is ready. Choose a unique username to finish setting it up.';
   }
-  elements.cloudFeedback.textContent = 'Your device data and cloud data are together.';
+  if (cloudUsername) elements.cloudFeedback.textContent = 'Your device data and cloud data are together.';
 }
 
 function handleCloudSession(user) {
@@ -593,6 +630,8 @@ function handleCloudSession(user) {
     cloudChannel = null;
     cloudUser = null;
     cloudUsername = null;
+    cloudUsernameDraft = null;
+    cloudUsernameSetupFeedback = '';
     collabLists = [];
     collabTasks = [];
     collabMembers = [];
@@ -908,7 +947,9 @@ function render() {
     : activeView === 'collab' ? 'Little plans, <em>together.</em>'
       : isDaily ? 'Make today <em>yours.</em>' : 'Your week, <em>gently.</em>';
   elements.welcomeCopy.textContent = isTodo
-    ? 'A soft place to gather all the things on your mind.'
+    ? cloudUsername
+      ? `Welcome back, @${cloudUsername}. A soft place to gather all the things on your mind.`
+      : 'A soft place to gather all the things on your mind.'
     : activeView === 'collab' ? 'Your own planner stays yours. These lists are for sharing.'
       : isDaily ? 'A little space for everything on your mind.' : 'Little plans, soft reminders, room to breathe.';
   if (isTodo) {
@@ -1000,6 +1041,25 @@ elements.cloudForm.addEventListener('submit', async (event) => {
     return;
   }
   const email = elements.cloudEmail.value.trim();
+  const username = elements.cloudUsernameIntent.value.trim().replace(/^@/, '').toLowerCase();
+  if (username && !/^[a-z0-9_]{3,20}$/.test(username)) {
+    elements.cloudFeedback.textContent = 'Use 3–20 letters, numbers, or underscores for your username.';
+    elements.cloudUsernameIntent.focus();
+    return;
+  }
+  try {
+    if (username) {
+      localStorage.setItem(PENDING_USERNAME_KEY, username);
+      cloudUsernameDraft = username;
+    } else {
+      localStorage.removeItem(PENDING_USERNAME_KEY);
+      cloudUsernameDraft = null;
+    }
+  } catch (error) {
+    console.error('Unable to save the username choice for sign-in:', error);
+    elements.cloudFeedback.textContent = 'Could not save your username choice on this device. Check browser storage and try again.';
+    return;
+  }
   elements.cloudSubmit.disabled = true;
   elements.cloudFeedback.textContent = 'Sending your sign-in link…';
   try {
@@ -1046,7 +1106,11 @@ elements.cloudUsernameForm.addEventListener('submit', async (event) => {
     }
     if (error) throw error;
     cloudUsername = username;
+    cloudUsernameDraft = null;
+    cloudUsernameSetupFeedback = '';
+    localStorage.removeItem(PENDING_USERNAME_KEY);
     refreshCloudDialog();
+    render();
     renderCollab();
     elements.cloudFeedback.textContent = `Your username is saved as @${username}.`;
   } catch (error) {

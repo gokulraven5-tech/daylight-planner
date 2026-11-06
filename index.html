@@ -307,6 +307,9 @@
             <form id="cloud-signin-form">
               <label class="field-label" for="cloud-email">Email address</label>
               <input id="cloud-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+              <label class="field-label" for="cloud-signin-username">Username <span class="optional">(for a new account)</span></label>
+              <div class="username-input-wrap"><span aria-hidden="true">@</span><input id="cloud-signin-username" name="username" type="text" maxlength="20" pattern="[A-Za-z0-9_]{3,20}" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="cloud-signin-username-help"></div>
+              <p class="username-help" id="cloud-signin-username-help">Choose 3–20 letters, numbers, or underscores. Leave blank if you already have an account.</p>
               <button class="save-button" id="cloud-submit" type="submit">Email me a sign-in link <span aria-hidden="true">✉</span></button>
             </form>
           </div>
