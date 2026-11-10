@@ -2,9 +2,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 
 const STORAGE_KEY = 'daylight-plans-v1';
 const TODO_STORAGE_KEY = 'daylight-todos-v1';
-const ANONYMOUS_MIGRATION_KEY = 'daylight-anonymous-migrated-v1';
 const PENDING_SYNC_KEY = 'daylight-cloud-pending-v1';
-const PENDING_USERNAME_KEY = 'daylight-cloud-pending-username-v1';
 const $ = (selector) => document.querySelector(selector);
 
 const elements = {
@@ -25,8 +23,6 @@ const elements = {
   todoView: $('#todo-view'),
   dailyView: $('#daily-view'),
   weeklyView: $('#weekly-view'),
-  collabView: $('#collab-view'),
-  usernameTab: $('#username-tab'),
   welcomeTitle: $('#welcome-title'),
   welcomeCopy: $('.welcome-copy'),
   dialog: $('#plan-dialog'),
@@ -40,46 +36,21 @@ const elements = {
   todoList: $('#todo-list'),
   todoCount: $('#todo-count'),
   todoEmpty: $('#todo-empty'),
-  cloudAccount: $('#cloud-account'),
-  cloudStatus: $('#cloud-status'),
+  usernameDisplay: $('#username-display'),
+  signInButton: $('#sign-in-button'),
   cloudDialog: $('#cloud-dialog'),
+  cloudDialogClose: $('#close-cloud-dialog'),
+  cloudExplanation: $('#cloud-explanation'),
   cloudForm: $('#cloud-signin-form'),
   cloudEmail: $('#cloud-email'),
-  cloudUsernameIntent: $('#cloud-signin-username'),
-  cloudExplanation: $('#cloud-explanation'),
-  cloudSetupNote: $('#cloud-setup-note'),
-  cloudAuthControls: $('#cloud-auth-controls'),
   cloudSubmit: $('#cloud-submit'),
   cloudUsernameForm: $('#cloud-username-form'),
   cloudUsername: $('#cloud-username'),
   cloudUsernameSubmit: $('#cloud-username-submit'),
   cloudSignout: $('#cloud-signout'),
   cloudFeedback: $('#cloud-feedback'),
-  collabDashboard: $('#collab-dashboard'),
-  collabSigninNote: $('#collab-signin-note'),
-  collabSignin: $('#collab-signin'),
-  collabCreateForm: $('#collab-create-form'),
-  collabListName: $('#collab-list-name'),
-  collabLayout: $('#collab-layout'),
-  collabListNav: $('#collab-list-nav'),
-  collabNoLists: $('#collab-no-lists'),
-  collabEmptyState: $('#collab-empty-state'),
-  collabListDetail: $('#collab-list-detail'),
-  collabSelectedName: $('#collab-selected-name'),
-  collabOwnerNote: $('#collab-owner-note'),
-  collabRenameList: $('#collab-rename-list'),
-  collabDeleteList: $('#collab-delete-list'),
-  collabLeaveList: $('#collab-leave-list'),
-  collabMemberList: $('#collab-member-list'),
-  collabInviteForm: $('#collab-invite-form'),
-  collabInviteUsername: $('#collab-invite-username'),
-  collabInviteNote: $('#collab-invite-note'),
-  collabTaskForm: $('#collab-task-form'),
-  collabTaskTitle: $('#collab-task-title'),
-  collabTaskCount: $('#collab-task-count'),
-  collabTaskList: $('#collab-task-list'),
-  collabTaskEmpty: $('#collab-task-empty'),
-  collabFeedback: $('#collab-feedback'),
+  todoStorageCopy: $('#todo-storage-copy'),
+  plannerStorageCopy: $('#planner-storage-copy'),
 };
 
 let selectedDate = new Date();
@@ -93,18 +64,9 @@ let toastTimer;
 let cloudClient = null;
 let cloudUser = null;
 let cloudUsername = null;
-let cloudUsernameDraft = null;
-let cloudUsernameSetupFeedback = '';
+let cloudProfileLoaded = false;
 let cloudChannel = null;
-let collabLists = [];
-let collabTasks = [];
-let collabMembers = [];
-let selectedCollabListId = null;
-let collabRefreshPromise = null;
-let activeLocalUserId = null;
 let cloudReady = false;
-let cloudLoadingUserId = null;
-let cloudLoadPromise = null;
 let cloudDirty = false;
 let applyingCloudData = false;
 let cloudRevision = 0;
@@ -164,7 +126,11 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => elements.note.classList.remove('is-visible'), 2800);
 }
 
-function loadPlans(key = STORAGE_KEY) {
+function localStorageKey(key) {
+  return cloudUser ? `${key}:${cloudUser.id}` : key;
+}
+
+function loadPlans(key = localStorageKey(STORAGE_KEY)) {
   try {
     const saved = localStorage.getItem(key);
     if (!saved) return [];
@@ -187,7 +153,7 @@ function savePlans() {
     return false;
   }
   try {
-    localStorage.setItem(activeLocalUserId ? `${STORAGE_KEY}:${activeLocalUserId}` : STORAGE_KEY, JSON.stringify(plans));
+    localStorage.setItem(localStorageKey(STORAGE_KEY), JSON.stringify(plans));
     scheduleCloudSync();
     return true;
   } catch (error) {
@@ -197,7 +163,7 @@ function savePlans() {
   }
 }
 
-function loadTodos(key = TODO_STORAGE_KEY) {
+function loadTodos(key = localStorageKey(TODO_STORAGE_KEY)) {
   try {
     const saved = localStorage.getItem(key);
     if (!saved) return [];
@@ -218,7 +184,7 @@ function saveTodos() {
     return false;
   }
   try {
-    localStorage.setItem(activeLocalUserId ? `${TODO_STORAGE_KEY}:${activeLocalUserId}` : TODO_STORAGE_KEY, JSON.stringify(todos));
+    localStorage.setItem(localStorageKey(TODO_STORAGE_KEY), JSON.stringify(todos));
     scheduleCloudSync();
     return true;
   } catch (error) {
@@ -234,67 +200,75 @@ function mergeById(remoteItems, localItems) {
   return [...merged.values()];
 }
 
-function setCloudStatus(label, detail = '') {
-  elements.cloudStatus.textContent = label;
-  elements.cloudAccount.setAttribute('aria-label', detail || label);
+function refreshAccountUI() {
+  elements.usernameDisplay.textContent = cloudUsername
+    ? `@${cloudUsername}`
+    : cloudUser ? cloudProfileLoaded ? 'Choose username' : 'Account' : 'Username';
+  elements.usernameDisplay.setAttribute('aria-label', cloudUsername
+    ? `Signed in as @${cloudUsername}`
+    : cloudUser
+      ? cloudProfileLoaded ? 'Choose a username to finish setting up your account' : 'Account details'
+      : 'Username');
+  elements.signInButton.textContent = cloudUser ? 'Sign out' : 'Sign in';
+  elements.signInButton.setAttribute('aria-label', cloudUser ? 'Sign out' : 'Sign in');
+  elements.cloudForm.hidden = Boolean(cloudUser);
+  elements.cloudUsernameForm.hidden = !cloudUser || !cloudProfileLoaded || Boolean(cloudUsername);
+  elements.cloudSignout.hidden = !cloudUser;
+  elements.cloudDialogClose.hidden = Boolean(cloudUser && cloudProfileLoaded && !cloudUsername);
+  elements.cloudUsername.value = cloudUsername || '';
+  const storageCopy = cloudUsername
+    ? 'Your plans and to-dos sync to your account across devices.'
+    : cloudUser && cloudProfileLoaded && !cloudUsername
+      ? 'Choose your username to finish setting up account sync.'
+      : cloudUser
+        ? 'Connecting to your private account planner…'
+      : 'Your plans and to-dos are saved on this device until you sign in.';
+  elements.todoStorageCopy.textContent = storageCopy;
+  elements.plannerStorageCopy.textContent = storageCopy;
+  elements.cloudExplanation.textContent = cloudUser
+    ? cloudUsername
+      ? `Signed in as @${cloudUsername}. Your planner is private to your account and syncs across your devices.`
+      : cloudProfileLoaded
+        ? 'Choose a unique username to finish setting up your account.'
+        : 'Loading your private account planner…'
+    : 'Sign in with an email link to access your personal planner on any device.';
 }
 
-function refreshCloudDialog() {
-  const configured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
-  elements.cloudSetupNote.hidden = configured;
-  elements.cloudAuthControls.hidden = !configured || Boolean(cloudUser);
-  elements.cloudUsernameForm.hidden = !configured || !cloudUser;
-  elements.cloudSignout.hidden = !configured || !cloudUser;
-  elements.usernameTab.textContent = cloudUser
-    ? cloudUsername ? `@${cloudUsername}` : 'Choose name'
-    : 'Username';
-  elements.usernameTab.setAttribute('aria-label', cloudUsername
-    ? `Manage username @${cloudUsername}`
-    : 'Sign in and choose a username');
-  elements.usernameTab.title = cloudUsername ? `@${cloudUsername}` : 'Sign in and choose a username';
-  if (document.activeElement !== elements.cloudUsername) {
-    elements.cloudUsername.value = cloudUsername || cloudUsernameDraft || '';
-  }
-  elements.cloudUsernameSubmit.textContent = cloudUsername ? 'Update username ✳' : 'Save username ✳';
+function openAccountDialog() {
+  refreshAccountUI();
   elements.cloudFeedback.textContent = '';
-  if (!configured) {
-    elements.cloudExplanation.textContent = 'Your plans are saved on this device. Connect a free Supabase project to sync them across your devices.';
-    return;
-  }
-  if (cloudUser) {
-    elements.cloudExplanation.textContent = cloudUsername
-      ? `Signed in as @${cloudUsername}${cloudUser.email ? ` (${cloudUser.email})` : ''}. Your plans and to-dos sync privately to your cloud account.`
-      : 'Choose a unique username for your planner. You can still sync your plans while you set it up.';
-    return;
-  }
-  elements.cloudExplanation.textContent = 'Create an account or sign in with an email link. Choose a username now for a new account, or leave it blank and choose one after signing in.';
-  elements.cloudSubmit.hidden = false;
+  elements.cloudDialog.showModal();
+  if (cloudUser && !cloudReady) handleCloudSession(cloudUser);
+  if (cloudUser && cloudProfileLoaded && !cloudUsername) elements.cloudUsername.focus();
+  else if (!cloudUser) elements.cloudEmail.focus();
 }
 
-function openCloudDialog() {
-  refreshCloudDialog();
-  elements.cloudDialog.showModal();
+function pendingSyncKey(userId) {
+  return `${PENDING_SYNC_KEY}:${userId}`;
 }
 
 function scheduleCloudSync() {
-  if (!cloudClient || !cloudUser || !cloudReady || applyingCloudData) return;
+  if (!cloudClient || !cloudUser || applyingCloudData) return;
   cloudDirty = true;
-  const revision = ++cloudRevision;
   const userId = cloudUser.id;
-  const pendingKey = `${PENDING_SYNC_KEY}:${userId}`;
+  const pendingKey = pendingSyncKey(userId);
   try {
     localStorage.setItem(pendingKey, 'true');
   } catch (error) {
     console.error('Unable to record pending cloud sync:', error);
-    showToast('This change is saved for now, but this device could not mark it for cloud retry.');
+    showToast('Saved on this device, but cloud retry could not be recorded.');
   }
+  if (!cloudReady) return;
+  if (!cloudUsername) {
+    return;
+  }
+  const revision = ++cloudRevision;
   const snapshot = {
     user_id: userId,
     plans: JSON.parse(JSON.stringify(plans)),
     todos: JSON.parse(JSON.stringify(todos)),
     updated_at: new Date().toISOString(),
   };
-  setCloudStatus('Syncing…', 'Cloud sync is in progress');
   cloudSyncQueue = cloudSyncQueue
     .catch(() => {})
     .then(async () => {
@@ -303,33 +277,36 @@ function scheduleCloudSync() {
         .from('planner_data')
         .upsert(snapshot, { onConflict: 'user_id' });
       if (error) throw error;
-      if (revision === cloudRevision) {
-        cloudDirty = false;
-        try {
-          localStorage.setItem(ANONYMOUS_MIGRATION_KEY, 'true');
-          localStorage.removeItem(pendingKey);
-        } catch (error) {
-          console.error('Unable to record cloud sync state:', error);
-        }
-        setCloudStatus('Synced', `Synced as ${cloudUser?.email || 'your account'}`);
+      if (revision !== cloudRevision) return;
+      cloudDirty = false;
+      try {
+        localStorage.removeItem(pendingKey);
+      } catch (error) {
+        console.error('Unable to clear pending cloud sync:', error);
+      }
+      if (elements.cloudDialog.open) {
+        elements.cloudFeedback.textContent = 'Your planner is up to date across your devices.';
       }
     })
     .catch((error) => {
       console.error('Cloud sync failed:', error);
-      setCloudStatus('Sync paused', 'Cloud sync failed; your device copy is safe');
-      showToast(`Saved on this device, but cloud sync failed: ${error.message || 'Check your connection.'}`);
+      if (cloudUser?.id === userId) {
+        showToast(`Saved on this device, but cloud sync failed: ${error.message || 'Check your connection.'}`);
+      }
     });
 }
 
 function applyCloudRow(row) {
   if (!row || row.user_id !== cloudUser?.id) return;
   if (!validPlans(row.plans) || !validTodos(row.todos)) {
-    const error = new Error('The cloud planner data has an unexpected format.');
+    const error = new Error('The saved planner data has an unexpected format.');
     console.error('Unable to apply cloud planner data:', error);
-    setCloudStatus('Sync issue', error.message);
     showToast('Cloud data could not be read. Your device copy was left unchanged.');
     return;
   }
+  if (JSON.stringify(row.plans) === JSON.stringify(plans) &&
+    JSON.stringify(row.todos) === JSON.stringify(todos)
+  ) return;
   const hadLocalChanges = cloudDirty;
   applyingCloudData = true;
   plans = hadLocalChanges ? mergeById(row.plans, plans) : row.plans;
@@ -339,11 +316,7 @@ function applyCloudRow(row) {
   renderPlans();
   renderTodos();
   applyingCloudData = false;
-  if (hadLocalChanges) {
-    scheduleCloudSync();
-  } else {
-    setCloudStatus('Synced', `Synced as ${cloudUser?.email || 'your account'}`);
-  }
+  if (hadLocalChanges) scheduleCloudSync();
 }
 
 function subscribeToCloud(userId) {
@@ -358,187 +331,32 @@ function subscribeToCloud(userId) {
     }, (payload) => {
       if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') applyCloudRow(payload.new);
     })
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'planner_profiles',
-      filter: `user_id=eq.${userId}`,
-    }, (payload) => {
-      if (typeof payload.new?.username === 'string') {
-        cloudUsername = payload.new.username;
-        refreshCloudDialog();
-        render();
-        renderCollab();
-      }
-    })
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'planner_collab_lists',
-    }, () => refreshCollabData())
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'planner_collab_members',
-    }, () => refreshCollabData())
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'planner_collab_tasks',
-    }, () => refreshCollabData())
     .subscribe((status, error) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error('Cloud live updates could not connect:', error);
-        setCloudStatus('Sync paused', 'Live cloud updates could not connect');
-        showToast('Cloud live updates could not connect. Your changes remain saved on this device.');
+        showToast('Live updates are paused. Your changes remain saved on this device.');
       }
     });
 }
 
-function selectedCollabList() {
-    return collabLists.find((list) => list.id === selectedCollabListId) || null;
-}
-
-function renderCollab() {
-    const signedIn = Boolean(cloudUser);
-    const canCreate = signedIn && Boolean(cloudUsername);
-    const selectedList = selectedCollabList();
-    const currentMembership = collabMembers.find((member) => member.user_id === cloudUser?.id);
-    const isOwner = currentMembership?.role === 'owner';
-    elements.collabSigninNote.hidden = canCreate;
-    elements.collabCreateForm.hidden = !canCreate;
-    elements.collabLayout.hidden = !signedIn;
-    elements.collabSigninNote.querySelector('p').textContent = signedIn
-      ? 'Choose a username before creating lists or inviting people.'
-      : 'Sign in and choose a username to create or join a shared list.';
-    elements.collabSignin.hidden = canCreate;
-    elements.collabNoLists.hidden = collabLists.length > 0;
-    elements.collabListNav.innerHTML = collabLists.map((list) => {
-      return `<li><button type="button" data-collab-list="${escapeHTML(list.id)}" aria-current="${list.id === selectedCollabListId}"><strong>${escapeHTML(list.name)}</strong><span>${list.owner_id === cloudUser?.id ? 'created by you' : 'shared with you'}</span></button></li>`;
-    }).join('');
-    elements.collabEmptyState.hidden = !signedIn || Boolean(selectedList);
-    elements.collabListDetail.hidden = !signedIn || !selectedList;
-    if (!selectedList) return;
-
-    elements.collabSelectedName.textContent = selectedList.name;
-    elements.collabOwnerNote.textContent = isOwner ? 'You made this list.' : 'You’re a member of this shared list.';
-    elements.collabRenameList.hidden = !isOwner;
-    elements.collabDeleteList.hidden = !isOwner;
-    elements.collabLeaveList.hidden = isOwner || !currentMembership;
-    elements.collabInviteForm.hidden = !isOwner;
-    elements.collabInviteNote.hidden = isOwner;
-    elements.collabMemberList.innerHTML = collabMembers.map((member) => `
-      <li>
-        @${escapeHTML(member.username)}
-        <span>${member.role === 'owner' ? 'creator' : 'member'}</span>
-        ${isOwner && member.role !== 'owner' ? `<button type="button" data-remove-collab-member="${escapeHTML(member.user_id)}" aria-label="Remove @${escapeHTML(member.username)}">×</button>` : ''}
-      </li>
-    `).join('');
-    const remaining = collabTasks.filter((task) => !task.done).length;
-    elements.collabTaskCount.textContent = `${remaining} left`;
-    elements.collabTaskEmpty.hidden = collabTasks.length > 0;
-    elements.collabTaskList.innerHTML = collabTasks.map((task) => `
-      <li class="collab-task-item${task.done ? ' is-done' : ''}">
-        <label class="collab-task-check">
-          <input type="checkbox" data-collab-task-toggle="${escapeHTML(task.id)}" ${task.done ? 'checked' : ''}>
-          <span>${escapeHTML(task.title)}</span>
-        </label>
-        <button class="collab-task-delete" type="button" data-collab-task-delete="${escapeHTML(task.id)}" aria-label="Remove shared task: ${escapeHTML(task.title)}">×</button>
-      </li>
-    `).join('');
-}
-
-async function loadCollabListDetails(listId) {
-    if (!cloudClient || !cloudUser || !listId) {
-      collabTasks = [];
-      collabMembers = [];
-      renderCollab();
-      return;
-    }
-    const [tasksResult, membersResult] = await Promise.all([
-      cloudClient
-        .from('planner_collab_tasks')
-        .select('id, list_id, title, done, created_by, created_at')
-        .eq('list_id', listId)
-        .order('created_at', { ascending: true }),
-      cloudClient.rpc('list_planner_collab_members', { p_list_id: listId }),
-    ]);
-    if (tasksResult.error) throw tasksResult.error;
-    if (membersResult.error) throw membersResult.error;
-    collabTasks = tasksResult.data || [];
-    collabMembers = membersResult.data || [];
-    renderCollab();
-}
-
-async function loadCollabLists() {
-    if (!cloudClient || !cloudUser) {
-      collabLists = [];
-      selectedCollabListId = null;
-      collabTasks = [];
-      collabMembers = [];
-      renderCollab();
-      return;
-    }
-    const { data, error } = await cloudClient
-      .from('planner_collab_lists')
-      .select('id, name, owner_id, created_at')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    collabLists = data || [];
-    if (!collabLists.some((list) => list.id === selectedCollabListId)) {
-      selectedCollabListId = collabLists[0]?.id || null;
-    }
-    if (selectedCollabListId) await loadCollabListDetails(selectedCollabListId);
-    else {
-      collabTasks = [];
-      collabMembers = [];
-    }
-    renderCollab();
-}
-
-function refreshCollabData() {
-    if (!cloudUser || collabRefreshPromise) return collabRefreshPromise;
-    collabRefreshPromise = loadCollabLists()
-      .catch((error) => {
-        console.error('Unable to refresh collaborative lists:', error);
-        elements.collabFeedback.textContent = `Shared lists could not refresh: ${error.message || 'Check your connection.'}`;
-      })
-      .finally(() => {
-        collabRefreshPromise = null;
-      });
-    return collabRefreshPromise;
-}
-
-async function loadCloudAccount(user) {
-  const accountPlansKey = `${STORAGE_KEY}:${user.id}`;
-  const accountTodosKey = `${TODO_STORAGE_KEY}:${user.id}`;
-  const previousUserId = activeLocalUserId;
-  const shouldImportAnonymous = previousUserId === null &&
-    localStorage.getItem(ANONYMOUS_MIGRATION_KEY) !== 'true';
-  const hasPendingChanges = localStorage.getItem(`${PENDING_SYNC_KEY}:${user.id}`) === 'true';
-  const localPlans = mergeById(
-    loadPlans(accountPlansKey),
-    shouldImportAnonymous ? plans : [],
-  );
-  const localTodos = mergeById(
-    loadTodos(accountTodosKey),
-    shouldImportAnonymous ? todos : [],
-  );
-
-  activeLocalUserId = user.id;
+async function loadCloudAccount(user, version) {
+  storageReady = true;
+  todoStorageReady = true;
+  const guestPlans = cloudUser ? [] : plans;
+  const guestTodos = cloudUser ? [] : todos;
+  const accountPlans = loadPlans(`${STORAGE_KEY}:${user.id}`);
+  const accountTodos = loadTodos(`${TODO_STORAGE_KEY}:${user.id}`);
+  const pendingKey = pendingSyncKey(user.id);
+  const hasPendingChanges = localStorage.getItem(pendingKey) === 'true';
   cloudUser = user;
+  cloudUsername = null;
+  cloudProfileLoaded = false;
   cloudReady = false;
-  plans = localPlans;
-  todos = localTodos;
-  applyingCloudData = true;
-  savePlans();
-  saveTodos();
-  applyingCloudData = false;
+  cloudDirty = false;
+  plans = accountPlans;
+  todos = accountTodos;
   render();
   renderTodos();
-  setCloudStatus('Loading…', 'Loading your private cloud planner');
-  cloudUsername = null;
-  refreshCloudDialog();
 
   const [plannerResult, profileResult] = await Promise.all([
     cloudClient
@@ -552,55 +370,45 @@ async function loadCloudAccount(user) {
       .eq('user_id', user.id)
       .maybeSingle(),
   ]);
-  const { data, error } = plannerResult;
-  const { data: profile, error: profileError } = profileResult;
-  if (error) throw error;
-  if (profileError) throw profileError;
-  if (data && (!validPlans(data.plans) || !validTodos(data.todos))) {
-    throw new Error('The cloud planner data has an unexpected format.');
+  if (plannerResult.error) throw plannerResult.error;
+  if (profileResult.error) throw profileResult.error;
+  const remotePlanner = plannerResult.data;
+  const profile = profileResult.data;
+  if (version !== cloudSessionVersion) return;
+  const hasLocalEdits = cloudDirty || localStorage.getItem(pendingKey) === 'true';
+  const localPlans = cloudDirty ? plans : accountPlans;
+  const localTodos = cloudDirty ? todos : accountTodos;
+  if (remotePlanner && (!validPlans(remotePlanner.plans) || !validTodos(remotePlanner.todos))) {
+    throw new Error('The saved planner data has an unexpected format.');
   }
   if (profile && (typeof profile.username !== 'string' || !/^[a-z0-9_]{3,20}$/.test(profile.username))) {
-    throw new Error('The cloud profile has an unexpected username format.');
+    throw new Error('The account username has an unexpected format.');
   }
 
+  cloudProfileLoaded = true;
   cloudUsername = profile?.username || null;
-  cloudUsernameSetupFeedback = '';
-  if (cloudUsername) {
-    localStorage.removeItem(PENDING_USERNAME_KEY);
-    cloudUsernameDraft = null;
-  } else {
-    const pendingUsername = localStorage.getItem(PENDING_USERNAME_KEY);
-    if (pendingUsername && /^[a-z0-9_]{3,20}$/.test(pendingUsername)) {
-      cloudUsernameDraft = pendingUsername;
-      const { error: usernameError } = await cloudClient
-        .from('planner_profiles')
-        .upsert({
-          user_id: user.id,
-          username: pendingUsername,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-      if (usernameError) {
-        console.error('Unable to save the requested username after sign-in:', usernameError);
-        cloudUsernameSetupFeedback = usernameError.code === '23505'
-          ? `@${pendingUsername} is already taken. Choose another username.`
-          : `Could not save @${pendingUsername}: ${usernameError.message || 'Check your connection and try again.'}`;
-        if (usernameError.code === '23505') localStorage.removeItem(PENDING_USERNAME_KEY);
-      } else {
-        cloudUsername = pendingUsername;
-        cloudUsernameDraft = null;
-        localStorage.removeItem(PENDING_USERNAME_KEY);
-      }
-    } else {
-      cloudUsernameDraft = null;
-    }
+  let shouldSync = false;
+  if (remotePlanner) {
+    plans = hasPendingChanges || hasLocalEdits
+      ? mergeById(remotePlanner.plans, localPlans)
+      : remotePlanner.plans;
+    todos = hasPendingChanges || hasLocalEdits
+      ? mergeById(remotePlanner.todos, localTodos)
+      : remotePlanner.todos;
+    shouldSync = hasPendingChanges || hasLocalEdits;
+  } else if (localPlans.length || localTodos.length) {
+    plans = localPlans;
+    todos = localTodos;
+    shouldSync = true;
+  } else if (guestPlans.length || guestTodos.length) {
+    const importGuestData = window.confirm(
+      'This account has no saved planner yet. Import the plans and to-dos already on this device?',
+    );
+    plans = importGuestData ? guestPlans : [];
+    todos = importGuestData ? guestTodos : [];
+    shouldSync = importGuestData;
   }
-  const mergeLocalChanges = hasPendingChanges || shouldImportAnonymous;
-  plans = data
-    ? mergeLocalChanges ? mergeById(data.plans, localPlans) : data.plans
-    : localPlans;
-  todos = data
-    ? mergeLocalChanges ? mergeById(data.todos, localTodos) : data.todos
-    : localTodos;
+
   applyingCloudData = true;
   savePlans();
   saveTodos();
@@ -609,70 +417,71 @@ async function loadCloudAccount(user) {
   render();
   renderTodos();
   subscribeToCloud(user.id);
-  scheduleCloudSync();
-  await loadCollabLists().catch((error) => {
-    console.error('Unable to load collaborative lists:', error);
-    elements.collabFeedback.textContent = `Shared lists could not load: ${error.message || 'Check your database setup.'}`;
-  });
-  refreshCloudDialog();
+  refreshAccountUI();
+  if (shouldSync) scheduleCloudSync();
   if (!cloudUsername) {
     if (!elements.cloudDialog.open) elements.cloudDialog.showModal();
     elements.cloudUsername.focus();
-    elements.cloudFeedback.textContent = cloudUsernameSetupFeedback ||
-      'Your account is ready. Choose a unique username to finish setting it up.';
+    elements.cloudFeedback.textContent = 'Choose a unique username before using your account.';
   }
-  if (cloudUsername) elements.cloudFeedback.textContent = 'Your device data and cloud data are together.';
 }
+
+let cloudSessionVersion = 0;
+let cloudLoadingUserId = null;
+let cloudLoadPromise = null;
 
 function handleCloudSession(user) {
   if (!user) {
+    cloudSessionVersion += 1;
+    cloudRevision += 1;
+    cloudLoadingUserId = null;
+    cloudLoadPromise = null;
     if (cloudChannel && cloudClient) cloudClient.removeChannel(cloudChannel);
     cloudChannel = null;
     cloudUser = null;
     cloudUsername = null;
-    cloudUsernameDraft = null;
-    cloudUsernameSetupFeedback = '';
-    collabLists = [];
-    collabTasks = [];
-    collabMembers = [];
-    selectedCollabListId = null;
+    cloudProfileLoaded = false;
     cloudReady = false;
     cloudDirty = false;
-    activeLocalUserId = null;
-    plans = loadPlans();
-    todos = loadTodos();
-    setCloudStatus(SUPABASE_URL ? 'Signed out' : 'Set up sync', 'Cloud sync account');
+    storageReady = true;
+    todoStorageReady = true;
+    plans = loadPlans(STORAGE_KEY);
+    todos = loadTodos(TODO_STORAGE_KEY);
     render();
     renderTodos();
-    renderCollab();
-    refreshCloudDialog();
+    refreshAccountUI();
+    if (elements.cloudDialog.open) elements.cloudDialog.close();
     return Promise.resolve();
   }
   if (cloudUser?.id === user.id && cloudReady) return Promise.resolve();
   if (cloudLoadingUserId === user.id) return cloudLoadPromise;
 
+  if (cloudUser?.id !== user.id) cloudRevision += 1;
+  const version = ++cloudSessionVersion;
   cloudLoadingUserId = user.id;
-  cloudLoadPromise = loadCloudAccount(user)
+  cloudLoadPromise = loadCloudAccount(user, version)
+    .then(() => {
+      if (version !== cloudSessionVersion) return;
+    })
     .catch((error) => {
-      console.error('Unable to load cloud planner:', error);
+      if (version !== cloudSessionVersion) return;
+      console.error('Unable to load the account planner:', error);
       cloudReady = false;
-      setCloudStatus('Sync issue', 'Unable to load cloud data; device copy is safe');
-      elements.cloudFeedback.textContent = `Cloud sync could not load: ${error.message || 'Check your project setup and connection.'}`;
-      showToast('Could not load cloud data. Your device copy is safe and unchanged.');
+      refreshAccountUI();
+      elements.cloudFeedback.textContent =
+        `Your account data could not be loaded: ${error.message || 'Check your connection and try again.'}`;
+      showToast('Could not load your account data. Saved cloud data was not overwritten.');
     })
     .finally(() => {
-      cloudLoadingUserId = null;
-      cloudLoadPromise = null;
+      if (version === cloudSessionVersion) {
+        cloudLoadingUserId = null;
+        cloudLoadPromise = null;
+      }
     });
   return cloudLoadPromise;
 }
 
 async function initializeCloud() {
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    setCloudStatus('Set up sync', 'Cloud sync is not configured yet');
-    return;
-  }
-  setCloudStatus('Connecting…', 'Connecting to your cloud planner');
   try {
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
     cloudClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -680,7 +489,6 @@ async function initializeCloud() {
     });
     const { data, error } = await cloudClient.auth.getSession();
     if (error) throw error;
-    await handleCloudSession(data.session?.user || null);
     cloudClient.auth.onAuthStateChange((event, session) => {
       window.setTimeout(() => {
         if (event === 'SIGNED_OUT' || !session?.user) {
@@ -690,11 +498,11 @@ async function initializeCloud() {
         }
       }, 0);
     });
-    if (!data.session) setCloudStatus('Sign in to sync', 'Cloud project connected; sign in to sync');
+    await handleCloudSession(data.session?.user || null);
   } catch (error) {
-    console.error('Unable to initialize cloud sync:', error);
-    setCloudStatus('Cloud unavailable', 'Cloud setup or connection needs attention');
-    elements.cloudFeedback.textContent = `Cloud connection could not start: ${error.message || 'Check the setup guide.'}`;
+    console.error('Unable to initialize account sign-in:', error);
+    elements.cloudFeedback.textContent =
+      `Sign-in could not start: ${error.message || 'Check the account setup and connection.'}`;
   }
 }
 
@@ -936,31 +744,19 @@ function render() {
   elements.dailyView.setAttribute('aria-pressed', String(isDaily));
   elements.weeklyView.classList.toggle('is-active', activeView === 'weekly');
   elements.weeklyView.setAttribute('aria-pressed', String(activeView === 'weekly'));
-  elements.collabView.classList.toggle('is-active', activeView === 'collab');
-  elements.collabView.setAttribute('aria-pressed', String(activeView === 'collab'));
   elements.todoDashboard.hidden = !isTodo;
-  elements.grid.hidden = isTodo || activeView === 'collab';
-  elements.collabDashboard.hidden = activeView !== 'collab';
-  $('#add-plan').hidden = isTodo || activeView === 'collab';
+  elements.grid.hidden = isTodo;
+  $('#add-plan').hidden = isTodo;
   elements.welcomeTitle.innerHTML = isTodo
     ? 'Your little list, <em>your pace.</em>'
-    : activeView === 'collab' ? 'Little plans, <em>together.</em>'
-      : isDaily ? 'Make today <em>yours.</em>' : 'Your week, <em>gently.</em>';
+    : isDaily ? 'Make today <em>yours.</em>' : 'Your week, <em>gently.</em>';
   elements.welcomeCopy.textContent = isTodo
-    ? cloudUsername
-      ? `Welcome back, @${cloudUsername}. A soft place to gather all the things on your mind.`
-      : 'A soft place to gather all the things on your mind.'
-    : activeView === 'collab' ? 'Your own planner stays yours. These lists are for sharing.'
-      : isDaily ? 'A little space for everything on your mind.' : 'Little plans, soft reminders, room to breathe.';
+    ? 'A soft place to gather all the things on your mind.'
+    : isDaily ? 'A little space for everything on your mind.' : 'Little plans, soft reminders, room to breathe.';
   if (isTodo) {
     elements.todayLabel.textContent = 'A LITTLE SPACE FOR WHAT MATTERS';
     elements.grid.setAttribute('aria-label', 'Your planner');
     renderTodos();
-    return;
-  }
-  if (activeView === 'collab') {
-    elements.todayLabel.textContent = 'A LITTLE SPACE, SHARED';
-    renderCollab();
     return;
   }
   elements.grid.classList.toggle('daily-mode', isDaily);
@@ -1010,12 +806,6 @@ elements.weeklyView.addEventListener('click', () => {
   render();
 });
 
-elements.collabView.addEventListener('click', () => {
-  activeView = 'collab';
-  render();
-  if (cloudUser) refreshCollabData();
-});
-
 elements.todoView.addEventListener('click', () => {
   activeView = 'todo';
   render();
@@ -1026,10 +816,28 @@ $('#close-dialog').addEventListener('click', () => elements.dialog.close());
 $('#export-backup').addEventListener('click', exportBackup);
 $('#restore-backup').addEventListener('click', () => elements.backupFile.click());
 elements.backupFile.addEventListener('change', () => restoreBackup(elements.backupFile.files[0]));
-elements.cloudAccount.addEventListener('click', openCloudDialog);
-elements.usernameTab.addEventListener('click', openCloudDialog);
-elements.collabSignin.addEventListener('click', openCloudDialog);
+elements.usernameDisplay.addEventListener('click', openAccountDialog);
+elements.signInButton.addEventListener('click', async () => {
+  if (!cloudUser) {
+    openAccountDialog();
+    return;
+  }
+  elements.signInButton.disabled = true;
+  try {
+    const { error } = await cloudClient.auth.signOut();
+    if (error) throw error;
+  } catch (error) {
+    console.error('Unable to sign out:', error);
+    elements.cloudFeedback.textContent = `Could not sign out: ${error.message || 'Try again.'}`;
+    openAccountDialog();
+  } finally {
+    elements.signInButton.disabled = false;
+  }
+});
 $('#close-cloud-dialog').addEventListener('click', () => elements.cloudDialog.close());
+elements.cloudDialog.addEventListener('cancel', (event) => {
+  if (cloudUser && !cloudUsername) event.preventDefault();
+});
 elements.cloudDialog.addEventListener('click', (event) => {
   if (event.target === elements.cloudDialog) elements.cloudDialog.close();
 });
@@ -1037,29 +845,10 @@ elements.cloudDialog.addEventListener('click', (event) => {
 elements.cloudForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!cloudClient) {
-    elements.cloudFeedback.textContent = 'Cloud sync is not connected yet. Follow the setup guide first.';
+    elements.cloudFeedback.textContent = 'Sign-in is still connecting. Please try again in a moment.';
     return;
   }
   const email = elements.cloudEmail.value.trim();
-  const username = elements.cloudUsernameIntent.value.trim().replace(/^@/, '').toLowerCase();
-  if (username && !/^[a-z0-9_]{3,20}$/.test(username)) {
-    elements.cloudFeedback.textContent = 'Use 3–20 letters, numbers, or underscores for your username.';
-    elements.cloudUsernameIntent.focus();
-    return;
-  }
-  try {
-    if (username) {
-      localStorage.setItem(PENDING_USERNAME_KEY, username);
-      cloudUsernameDraft = username;
-    } else {
-      localStorage.removeItem(PENDING_USERNAME_KEY);
-      cloudUsernameDraft = null;
-    }
-  } catch (error) {
-    console.error('Unable to save the username choice for sign-in:', error);
-    elements.cloudFeedback.textContent = 'Could not save your username choice on this device. Check browser storage and try again.';
-    return;
-  }
   elements.cloudSubmit.disabled = true;
   elements.cloudFeedback.textContent = 'Sending your sign-in link…';
   try {
@@ -1068,10 +857,11 @@ elements.cloudForm.addEventListener('submit', async (event) => {
       options: { emailRedirectTo: `${location.origin}${location.pathname}` },
     });
     if (error) throw error;
-    elements.cloudFeedback.textContent = 'Check your email for a sign-in link. Open it on this device to connect your planner.';
+    elements.cloudFeedback.textContent = 'Check your email and open the sign-in link on this device.';
   } catch (error) {
-    console.error('Unable to request cloud sign-in:', error);
-    elements.cloudFeedback.textContent = `Could not send the sign-in link: ${error.message || 'Check your email and Supabase settings.'}`;
+    console.error('Unable to request a sign-in link:', error);
+    elements.cloudFeedback.textContent =
+      `Could not send the sign-in link: ${error.message || 'Check your email and try again.'}`;
   } finally {
     elements.cloudSubmit.disabled = false;
   }
@@ -1079,7 +869,7 @@ elements.cloudForm.addEventListener('submit', async (event) => {
 
 elements.cloudUsernameForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!cloudClient || !cloudUser) {
+  if (!cloudClient || !cloudUser || !cloudProfileLoaded) {
     elements.cloudFeedback.textContent = 'Sign in before choosing a username.';
     return;
   }
@@ -1090,7 +880,6 @@ elements.cloudUsernameForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  elements.cloudUsername.value = username;
   elements.cloudUsernameSubmit.disabled = true;
   elements.cloudFeedback.textContent = 'Saving your username…';
   try {
@@ -1101,242 +890,19 @@ elements.cloudUsernameForm.addEventListener('submit', async (event) => {
         username,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
-    if (error?.code === '23505') {
-      throw new Error('That username is already taken. Try another one.');
-    }
+    if (error?.code === '23505') throw new Error('That username is already taken. Try another one.');
     if (error) throw error;
     cloudUsername = username;
-    cloudUsernameDraft = null;
-    cloudUsernameSetupFeedback = '';
-    localStorage.removeItem(PENDING_USERNAME_KEY);
-    refreshCloudDialog();
-    render();
-    renderCollab();
-    elements.cloudFeedback.textContent = `Your username is saved as @${username}.`;
+    refreshAccountUI();
+    elements.cloudFeedback.textContent = `Your account is ready as @${username}.`;
+    if (cloudDirty) scheduleCloudSync();
   } catch (error) {
-    console.error('Unable to save cloud username:', error);
-    elements.cloudFeedback.textContent = `Could not save your username: ${error.message || 'Check your connection and try again.'}`;
+    console.error('Unable to save the account username:', error);
+    elements.cloudFeedback.textContent =
+      `Could not save your username: ${error.message || 'Check your connection and try again.'}`;
   } finally {
     elements.cloudUsernameSubmit.disabled = false;
   }
-});
-
-elements.collabCreateForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (!cloudUser || !cloudUsername) {
-    elements.collabFeedback.textContent = 'Sign in and choose a username before creating a shared list.';
-    return;
-  }
-  const name = elements.collabListName.value.trim();
-  if (!name) return;
-  const submit = elements.collabCreateForm.querySelector('button[type="submit"]');
-  submit.disabled = true;
-  elements.collabFeedback.textContent = 'Making your shared list…';
-  try {
-    const { data, error } = await cloudClient.rpc('create_planner_collab_list', { p_name: name });
-    if (error) throw error;
-    selectedCollabListId = data;
-    elements.collabCreateForm.reset();
-    await loadCollabLists();
-    elements.collabFeedback.textContent = 'Your shared list is ready. Invite someone by their exact username.';
-  } catch (error) {
-    console.error('Unable to create collaborative list:', error);
-    elements.collabFeedback.textContent = `Could not create the shared list: ${error.message || 'Check your connection.'}`;
-  } finally {
-    submit.disabled = false;
-  }
-});
-
-elements.collabListNav.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-collab-list]');
-  if (!button) return;
-  selectedCollabListId = button.dataset.collabList;
-  elements.collabFeedback.textContent = '';
-  try {
-    await loadCollabListDetails(selectedCollabListId);
-  } catch (error) {
-    console.error('Unable to load collaborative list:', error);
-    elements.collabFeedback.textContent = `Could not open this list: ${error.message || 'Check your connection.'}`;
-  }
-});
-
-elements.collabInviteForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (!selectedCollabListId) return;
-  const username = elements.collabInviteUsername.value.trim().replace(/^@/, '').toLowerCase();
-  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-    elements.collabFeedback.textContent = 'Enter a username with 3–20 letters, numbers, or underscores.';
-    return;
-  }
-  const submit = elements.collabInviteForm.querySelector('button[type="submit"]');
-  submit.disabled = true;
-  elements.collabFeedback.textContent = `Inviting @${username}…`;
-  try {
-    const { data, error } = await cloudClient.rpc('invite_planner_collab_user', {
-      p_list_id: selectedCollabListId,
-      p_username: username,
-    });
-    if (error) throw error;
-    elements.collabInviteForm.reset();
-    await loadCollabLists();
-    elements.collabFeedback.textContent = `@${data} can now see and update this list.`;
-  } catch (error) {
-    console.error('Unable to invite collaborative list member:', error);
-    const message = error.code === 'P0001'
-      ? error.message
-      : error.message || 'Check that the username exists and try again.';
-    elements.collabFeedback.textContent = `Could not invite that person: ${message}`;
-  } finally {
-    submit.disabled = false;
-  }
-});
-
-elements.collabDeleteList.addEventListener('click', async () => {
-  const list = selectedCollabList();
-  if (!list || !window.confirm(`Delete “${list.name}” and its shared tasks for everyone?`)) return;
-  elements.collabDeleteList.disabled = true;
-  try {
-    const { error } = await cloudClient.from('planner_collab_lists').delete().eq('id', list.id);
-    if (error) throw error;
-    selectedCollabListId = null;
-    await loadCollabLists();
-    elements.collabFeedback.textContent = 'The shared list was deleted.';
-  } catch (error) {
-    console.error('Unable to delete collaborative list:', error);
-    elements.collabFeedback.textContent = `Could not delete the list: ${error.message || 'Check your connection.'}`;
-  } finally {
-    elements.collabDeleteList.disabled = false;
-  }
-});
-
-elements.collabRenameList.addEventListener('click', async () => {
-  const list = selectedCollabList();
-  if (!list) return;
-  const name = window.prompt('What would you like to call this shared list?', list.name)?.trim();
-  if (!name || name === list.name) return;
-  if (name.length > 60) {
-    elements.collabFeedback.textContent = 'List names can be up to 60 characters.';
-    return;
-  }
-  elements.collabRenameList.disabled = true;
-  try {
-    const { error } = await cloudClient
-      .from('planner_collab_lists')
-      .update({ name })
-      .eq('id', list.id);
-    if (error) throw error;
-    await loadCollabLists();
-    elements.collabFeedback.textContent = 'The shared list name was updated.';
-  } catch (error) {
-    console.error('Unable to rename collaborative list:', error);
-    elements.collabFeedback.textContent = `Could not rename the list: ${error.message || 'Check your connection.'}`;
-  } finally {
-    elements.collabRenameList.disabled = false;
-  }
-});
-
-elements.collabLeaveList.addEventListener('click', async () => {
-  const list = selectedCollabList();
-  if (!list || !window.confirm(`Leave “${list.name}”? You’ll no longer see its shared tasks.`)) return;
-  elements.collabLeaveList.disabled = true;
-  try {
-    const { error } = await cloudClient.from('planner_collab_members')
-      .delete()
-      .eq('list_id', list.id)
-      .eq('user_id', cloudUser.id);
-    if (error) throw error;
-    selectedCollabListId = null;
-    await loadCollabLists();
-    elements.collabFeedback.textContent = 'You left the shared list.';
-  } catch (error) {
-    console.error('Unable to leave collaborative list:', error);
-    elements.collabFeedback.textContent = `Could not leave the list: ${error.message || 'Check your connection.'}`;
-  } finally {
-    elements.collabLeaveList.disabled = false;
-  }
-});
-
-elements.collabMemberList.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-remove-collab-member]');
-  const list = selectedCollabList();
-  if (!button || !list || !window.confirm('Remove this person from the shared list?')) return;
-  button.disabled = true;
-  try {
-    const { error } = await cloudClient.from('planner_collab_members')
-      .delete()
-      .eq('list_id', list.id)
-      .eq('user_id', button.dataset.removeCollabMember);
-    if (error) throw error;
-    await loadCollabLists();
-    elements.collabFeedback.textContent = 'The person was removed from this list.';
-  } catch (error) {
-    console.error('Unable to remove collaborative list member:', error);
-    elements.collabFeedback.textContent = `Could not remove this person: ${error.message || 'Check your connection.'}`;
-  }
-});
-
-elements.collabTaskForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const list = selectedCollabList();
-  const title = elements.collabTaskTitle.value.trim();
-  if (!list || !title) return;
-  const submit = elements.collabTaskForm.querySelector('button[type="submit"]');
-  submit.disabled = true;
-  try {
-    const { error } = await cloudClient.from('planner_collab_tasks').insert({
-      list_id: list.id,
-      title,
-      done: false,
-      created_by: cloudUser.id,
-    });
-    if (error) throw error;
-    elements.collabTaskForm.reset();
-    await loadCollabListDetails(list.id);
-  } catch (error) {
-    console.error('Unable to add shared task:', error);
-    elements.collabFeedback.textContent = `Could not add that task: ${error.message || 'Check your connection.'}`;
-  } finally {
-    submit.disabled = false;
-  }
-});
-
-elements.collabTaskList.addEventListener('change', async (event) => {
-  const checkbox = event.target.closest('[data-collab-task-toggle]');
-  if (!checkbox) return;
-  const task = collabTasks.find((item) => item.id === checkbox.dataset.collabTaskToggle);
-  if (!task) return;
-  const { error } = await cloudClient.from('planner_collab_tasks')
-    .update({ done: checkbox.checked })
-    .eq('id', task.id)
-    .eq('list_id', task.list_id);
-  if (error) {
-    console.error('Unable to update shared task:', error);
-    elements.collabFeedback.textContent = `Could not update that task: ${error.message || 'Check your connection.'}`;
-    checkbox.checked = task.done;
-    return;
-  }
-  task.done = checkbox.checked;
-  renderCollab();
-});
-
-elements.collabTaskList.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-collab-task-delete]');
-  if (!button) return;
-  const task = collabTasks.find((item) => item.id === button.dataset.collabTaskDelete);
-  if (!task) return;
-  button.disabled = true;
-  const { error } = await cloudClient.from('planner_collab_tasks')
-    .delete()
-    .eq('id', task.id)
-    .eq('list_id', task.list_id);
-  if (error) {
-    console.error('Unable to remove shared task:', error);
-    elements.collabFeedback.textContent = `Could not remove that task: ${error.message || 'Check your connection.'}`;
-    button.disabled = false;
-    return;
-  }
-  collabTasks = collabTasks.filter((item) => item.id !== task.id);
-  renderCollab();
 });
 
 elements.cloudSignout.addEventListener('click', async () => {
@@ -1345,9 +911,8 @@ elements.cloudSignout.addEventListener('click', async () => {
   try {
     const { error } = await cloudClient.auth.signOut();
     if (error) throw error;
-    elements.cloudDialog.close();
   } catch (error) {
-    console.error('Unable to sign out of cloud sync:', error);
+    console.error('Unable to sign out:', error);
     elements.cloudFeedback.textContent = `Could not sign out: ${error.message || 'Try again.'}`;
   } finally {
     elements.cloudSignout.disabled = false;
@@ -1355,7 +920,8 @@ elements.cloudSignout.addEventListener('click', async () => {
 });
 
 window.addEventListener('online', () => {
-  if (cloudDirty) scheduleCloudSync();
+  if (cloudUser && !cloudReady) handleCloudSession(cloudUser);
+  else if (cloudDirty) scheduleCloudSync();
 });
 
 elements.todoForm.addEventListener('submit', (event) => {
@@ -1447,6 +1013,7 @@ elements.list.addEventListener('click', (event) => {
 plans = loadPlans();
 todos = loadTodos();
 render();
+refreshAccountUI();
 initializeCloud();
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
