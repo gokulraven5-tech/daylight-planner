@@ -44,11 +44,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .username-display, .sign-in-button { min-height: 38px; padding: 0 15px; border: 1px solid rgba(177, 182, 164, .55); border-radius: 13px; background: rgba(255, 254, 250, .88); font-size: 11px; cursor: pointer; transition: background .2s, border-color .2s, box-shadow .2s, transform .2s; }
 .username-display { color: var(--rose-dark); font-weight: 600; }
 .username-display:hover { border-color: #c89183; background: #fffaf6; transform: translateY(-1px); }
-.username-label { display: inline-block; }
+.username-label { display: inline-block; max-width: 120px; overflow: hidden; font-family: 'Yellowtail', 'Brush Script MT', 'Segoe Script', cursive; font-size: 17px; font-weight: 400; line-height: 1; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
 .username-display:hover .username-label { animation: username-hover .48s ease both; }
 .sign-in-button { border-color: var(--rose-dark); background: var(--rose-dark); color: white; font-weight: 600; box-shadow: 0 4px 10px rgba(169, 101, 91, .16); }
 .sign-in-button:hover { background: #985a51; box-shadow: 0 6px 14px rgba(169, 101, 91, .23); transform: translateY(-1px); }
-.personal-name { color: var(--rose-dark); font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-weight: 500; }
+.personal-name { color: var(--rose-dark); font-family: 'Yellowtail', 'Brush Script MT', 'Segoe Script', cursive; font-size: 1.12em; font-weight: 400; letter-spacing: 0; }
 .welcome-row.name-enter #welcome-title { animation: personalized-title .8s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes username-hover {
   0%, 100% { transform: translateY(0); }
