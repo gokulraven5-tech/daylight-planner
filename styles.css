@@ -343,6 +343,12 @@ h2 { margin-bottom: 0; font-size: 19px; font-weight: 600; letter-spacing: -.45px
 
 @media (max-width: 760px) {
   .app-shell { width: min(100% - 34px, 560px); padding-bottom: 100px; }
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .plan-dialog input,
+  .plan-dialog select,
+  .plan-dialog textarea { font-size: 16px; }
   .topbar { height: 69px; }
   .welcome-row { min-height: 176px; padding: 24px 2px 18px; }
   .welcome-copy { max-width: 245px; font-size: 12px; line-height: 1.6; }
