@@ -4,8 +4,8 @@
   "description": "A gentle little planner for making room for what matters.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f7f3ed",
-  "theme_color": "#f7f3ed",
+  "background_color": "#f6f5ef",
+  "theme_color": "#f6f5ef",
   "icons": [
     {
       "src": "icon.svg",

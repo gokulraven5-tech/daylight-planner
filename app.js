@@ -3,6 +3,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 const STORAGE_KEY = 'daylight-plans-v1';
 const TODO_STORAGE_KEY = 'daylight-todos-v1';
 const PENDING_SYNC_KEY = 'daylight-cloud-pending-v1';
+const DISPLAY_NAME_KEY = 'daylight-display-name-v1';
 const $ = (selector) => document.querySelector(selector);
 
 const elements = {
@@ -19,6 +20,11 @@ const elements = {
   agendaTitle: $('#agenda-title'),
   paperNote: $('#paper-note'),
   todoDashboard: $('#todo-dashboard'),
+  todoTitle: $('#todo-title'),
+  nameDialog: $('#name-dialog'),
+  nameForm: $('#name-form'),
+  displayNameInput: $('#display-name'),
+  saveDisplayName: $('#save-display-name'),
   viewSwitch: $('.view-switch'),
   todoView: $('#todo-view'),
   dailyView: $('#daily-view'),
@@ -43,7 +49,6 @@ const elements = {
   cloudExplanation: $('#cloud-explanation'),
   cloudForm: $('#cloud-signin-form'),
   cloudEmail: $('#cloud-email'),
-  cloudSignupUsername: $('#cloud-signup-username'),
   cloudSubmit: $('#cloud-submit'),
   cloudUsernameForm: $('#cloud-username-form'),
   cloudUsername: $('#cloud-username'),
@@ -59,6 +64,7 @@ selectedDate.setHours(0, 0, 0, 0);
 let plans = [];
 let todos = [];
 let activeView = 'todo';
+let displayName = '';
 let storageReady = true;
 let todoStorageReady = true;
 let toastTimer;
@@ -132,6 +138,38 @@ function localStorageKey(key) {
   return cloudUser ? `${key}:${cloudUser.id}` : key;
 }
 
+function validDisplayName(value) {
+  return /^[a-z0-9_]{3,20}$/i.test(value);
+}
+
+function saveDisplayName(value, animate = true) {
+  const name = value.trim().replace(/^@/, '');
+  if (!validDisplayName(name)) {
+    elements.displayNameInput.setCustomValidity('Use 3–20 letters, numbers, or underscores.');
+    elements.displayNameInput.reportValidity();
+    return false;
+  }
+  elements.displayNameInput.setCustomValidity('');
+  try {
+    localStorage.setItem(DISPLAY_NAME_KEY, name);
+  } catch (error) {
+    console.error('Unable to save the planner display name:', error);
+    showToast('Could not save your name on this device. Check available browser storage.');
+    return false;
+  }
+  displayName = name;
+  render();
+  refreshAccountUI();
+  elements.nameDialog.close();
+  if (animate) {
+    const welcomeRow = document.querySelector('.welcome-row');
+    welcomeRow.classList.remove('name-enter');
+    void welcomeRow.offsetWidth;
+    welcomeRow.classList.add('name-enter');
+  }
+  return true;
+}
+
 function loadPlans(key = localStorageKey(STORAGE_KEY)) {
   try {
     const saved = localStorage.getItem(key);
@@ -203,14 +241,13 @@ function mergeById(remoteItems, localItems) {
 }
 
 function refreshAccountUI() {
-  elements.usernameDisplay.textContent = cloudUsername
-    ? `@${cloudUsername}`
-    : cloudUser ? cloudProfileLoaded ? 'Choose username' : 'Account' : 'Username';
-  elements.usernameDisplay.setAttribute('aria-label', cloudUsername
-    ? `Signed in as @${cloudUsername}`
-    : cloudUser
-      ? cloudProfileLoaded ? 'Choose a username to finish setting up your account' : 'Account details'
-      : 'Username');
+  const shownName = displayName || cloudUsername;
+  elements.usernameDisplay.innerHTML = shownName
+    ? `<span class="username-label">${escapeHTML(shownName)}</span>`
+    : '<span class="username-label">Your name</span>';
+  elements.usernameDisplay.setAttribute('aria-label', shownName
+    ? `Planner name: ${shownName}`
+    : 'Set your planner name');
   elements.signInButton.textContent = cloudUser ? 'Sign out' : 'Sign in';
   elements.signInButton.setAttribute('aria-label', cloudUser ? 'Sign out' : 'Sign in');
   elements.cloudForm.hidden = Boolean(cloudUser);
@@ -218,22 +255,23 @@ function refreshAccountUI() {
   elements.cloudSignout.hidden = !cloudUser;
   elements.cloudDialogClose.hidden = Boolean(cloudUser && cloudProfileLoaded && !cloudUsername);
   elements.cloudUsername.value = cloudUsername || cloudRequestedUsername || '';
+  const ownerLabel = displayName ? `${displayName}’s` : 'Your';
   const storageCopy = cloudUsername
-    ? 'Your plans and to-dos sync to your account across devices.'
+    ? `${ownerLabel} plans and to-dos sync across devices.`
     : cloudUser && cloudProfileLoaded && !cloudUsername
       ? 'Choose your username to finish setting up account sync.'
       : cloudUser
         ? 'Connecting to your private account planner…'
-      : 'Your plans and to-dos are saved on this device until you sign in.';
+      : `${ownerLabel} plans and to-dos are saved on this device until signing in.`;
   elements.todoStorageCopy.textContent = storageCopy;
   elements.plannerStorageCopy.textContent = storageCopy;
   elements.cloudExplanation.textContent = cloudUser
     ? cloudUsername
-      ? `Signed in as @${cloudUsername}. Your planner is private to your account and syncs across your devices.`
+      ? `Signed in as @${cloudUsername}. The planner is private to this account and syncs across devices.`
       : cloudProfileLoaded
-        ? 'Choose a unique username to finish setting up your account.'
-        : 'Loading your private account planner…'
-    : 'Choose a username and sign in with an email link to access your personal planner on any device.';
+        ? 'Choose a unique account username to finish setting up sync.'
+        : 'Loading the private account planner…'
+    : 'Sign in with an email link to sync this planner across devices.';
 }
 
 function openAccountDialog() {
@@ -242,7 +280,14 @@ function openAccountDialog() {
   elements.cloudDialog.showModal();
   if (cloudUser && !cloudReady) handleCloudSession(cloudUser);
   if (cloudUser && cloudProfileLoaded && !cloudUsername) elements.cloudUsername.focus();
-  else if (!cloudUser) elements.cloudSignupUsername.focus();
+  else if (!cloudUser) elements.cloudEmail.focus();
+}
+
+function openNameDialog() {
+  elements.displayNameInput.value = displayName;
+  elements.displayNameInput.setCustomValidity('');
+  elements.nameDialog.showModal();
+  elements.displayNameInput.focus();
 }
 
 function pendingSyncKey(userId) {
@@ -402,6 +447,7 @@ async function loadCloudAccount(user, version) {
     } else {
       profile = data;
     }
+    if (!displayName) saveDisplayName(requestedUsername, false);
   }
   if (version !== cloudSessionVersion) return;
   if (profile && (typeof profile.username !== 'string' || !/^[a-z0-9_]{3,20}$/.test(profile.username))) {
@@ -411,6 +457,7 @@ async function loadCloudAccount(user, version) {
   cloudProfileLoaded = true;
   cloudUsername = profile?.username || null;
   if (cloudUsername) cloudRequestedUsername = null;
+  if (!displayName && cloudUsername) saveDisplayName(cloudUsername, false);
   let shouldSync = false;
   if (remotePlanner) {
     plans = hasPendingChanges || hasLocalEdits
@@ -444,6 +491,7 @@ async function loadCloudAccount(user, version) {
   refreshAccountUI();
   if (shouldSync) scheduleCloudSync();
   if (!cloudUsername) {
+    if (elements.nameDialog.open) elements.nameDialog.close();
     if (!elements.cloudDialog.open) elements.cloudDialog.showModal();
     elements.cloudUsername.focus();
     elements.cloudFeedback.textContent = cloudRequestedUsername
@@ -776,21 +824,60 @@ function render() {
   elements.todoDashboard.hidden = !isTodo;
   elements.grid.hidden = isTodo;
   $('#add-plan').hidden = isTodo;
+  const owner = displayName
+    ? `<span class="personal-name">${escapeHTML(displayName)}’s</span>`
+    : 'Your';
   elements.welcomeTitle.innerHTML = isTodo
-    ? 'Your little list, <em>your pace.</em>'
-    : isDaily ? 'Make today <em>yours.</em>' : 'Your week, <em>gently.</em>';
+    ? `${owner} little list, <em>at a gentle pace.</em>`
+    : isDaily ? `${owner} day, <em>at a glance.</em>` : `${owner} week, <em>gently.</em>`;
   elements.welcomeCopy.textContent = isTodo
-    ? 'A soft place to gather all the things on your mind.'
-    : isDaily ? 'A little space for everything on your mind.' : 'Little plans, soft reminders, room to breathe.';
+    ? displayName
+      ? `A soft place to gather what matters to ${displayName}.`
+      : 'A soft place to gather all the things on your mind.'
+    : isDaily
+      ? displayName ? `A little space for ${displayName}’s plans today.` : 'A little space for everything on your mind.'
+      : displayName ? `Little plans for ${displayName}, with room to breathe.` : 'Little plans, soft reminders, room to breathe.';
+  elements.todoTitle.innerHTML = `${owner} to-do list <span aria-hidden="true">✳</span>`;
+  elements.todoDashboard.setAttribute('aria-label', displayName ? `${displayName}’s to-do dashboard` : 'Your to-do dashboard');
+  document.querySelectorAll('.daily-reminder').forEach((reminder) => {
+    reminder.textContent = displayName
+      ? `No need to do it all, ${displayName}. Just the next little thing.`
+      : 'You don’t have to do it all. Just the next little thing.';
+  });
+  document.querySelectorAll('.quote-card .priority-line').forEach((priority) => {
+    priority.innerHTML = displayName
+      ? `<span>♡</span> Be kind to ${escapeHTML(displayName)} today`
+      : '<span>♡</span> Be kind to yourself today';
+  });
+  const firstPriority = $('.priority-card .priority-line');
+  if (firstPriority) {
+    firstPriority.innerHTML = displayName
+      ? `<span>01</span> Make time for ${escapeHTML(displayName)}`
+      : '<span>01</span> Make time for yourself';
+  }
+  document.querySelectorAll('.todo-tools .note-footer').forEach((footer) => {
+    footer.innerHTML = displayName
+      ? `<span class="privacy-dot"></span> Just for ${escapeHTML(displayName)}, always`
+      : '<span class="privacy-dot"></span> Just yours, always';
+  });
+  $('#plan-title-label').textContent = displayName ? `What’s on ${displayName}’s mind?` : 'What’s on your mind?';
+  $('.footer').innerHTML = displayName
+    ? `Made for ${escapeHTML(displayName)}’s days, just as they are <span aria-hidden="true">♡</span>`
+    : 'Made for your days, just as they are <span aria-hidden="true">♡</span>';
   if (isTodo) {
     elements.todayLabel.textContent = 'A LITTLE SPACE FOR WHAT MATTERS';
-    elements.grid.setAttribute('aria-label', 'Your planner');
+    elements.grid.setAttribute('aria-label', displayName ? `${displayName}’s planner` : 'Your planner');
     renderTodos();
     return;
   }
   elements.grid.classList.toggle('daily-mode', isDaily);
   elements.grid.classList.toggle('weekly-mode', !isDaily);
-  elements.grid.setAttribute('aria-label', isDaily ? 'Your daily planner' : 'Your weekly planner');
+  elements.grid.setAttribute(
+    'aria-label',
+    displayName
+      ? `${displayName}’s ${isDaily ? 'daily' : 'weekly'} planner`
+      : isDaily ? 'Your daily planner' : 'Your weekly planner',
+  );
   elements.dateCard.setAttribute('aria-label', isDaily ? 'Choose a day' : 'Choose a week');
   elements.agendaEyebrow.textContent = isDaily ? 'A LITTLE PLAN FOR TODAY' : 'A FRESH PAGE';
   elements.agendaTitle.textContent = isDaily ? 'Today, at a glance' : 'The week, at a glance';
@@ -845,10 +932,18 @@ $('#close-dialog').addEventListener('click', () => elements.dialog.close());
 $('#export-backup').addEventListener('click', exportBackup);
 $('#restore-backup').addEventListener('click', () => elements.backupFile.click());
 elements.backupFile.addEventListener('change', () => restoreBackup(elements.backupFile.files[0]));
-elements.usernameDisplay.addEventListener('click', openAccountDialog);
+elements.usernameDisplay.addEventListener('click', openNameDialog);
+elements.nameForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveDisplayName(elements.displayNameInput.value);
+});
+elements.nameDialog.addEventListener('cancel', (event) => {
+  if (!displayName) event.preventDefault();
+});
 elements.signInButton.addEventListener('click', async () => {
   if (!cloudUser) {
-    openAccountDialog();
+    if (!displayName) openNameDialog();
+    else openAccountDialog();
     return;
   }
   elements.signInButton.disabled = true;
@@ -877,13 +972,12 @@ elements.cloudForm.addEventListener('submit', async (event) => {
     elements.cloudFeedback.textContent = 'Sign-in is still connecting. Please try again in a moment.';
     return;
   }
-  const email = elements.cloudEmail.value.trim();
-  const username = elements.cloudSignupUsername.value.trim().replace(/^@/, '').toLowerCase();
-  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-    elements.cloudFeedback.textContent = 'Use 3–20 letters, numbers, or underscores for your username.';
-    elements.cloudSignupUsername.focus();
+  if (!displayName || !validDisplayName(displayName)) {
+    elements.cloudFeedback.textContent = 'Set your planner name before signing in.';
+    openNameDialog();
     return;
   }
+  const email = elements.cloudEmail.value.trim();
   elements.cloudSubmit.disabled = true;
   elements.cloudFeedback.textContent = 'Sending your sign-in link…';
   try {
@@ -891,7 +985,7 @@ elements.cloudForm.addEventListener('submit', async (event) => {
       email,
       options: {
         emailRedirectTo: `${location.origin}${location.pathname}`,
-        data: { username },
+        data: { username: displayName.toLowerCase() },
       },
     });
     if (error) throw error;
@@ -932,6 +1026,7 @@ elements.cloudUsernameForm.addEventListener('submit', async (event) => {
     if (error) throw error;
     cloudUsername = username;
     cloudRequestedUsername = null;
+    if (!displayName) saveDisplayName(username, false);
     refreshAccountUI();
     elements.cloudFeedback.textContent = `Your account is ready as @${username}.`;
     if (cloudDirty) scheduleCloudSync();
@@ -1051,8 +1146,22 @@ elements.list.addEventListener('click', (event) => {
 
 plans = loadPlans();
 todos = loadTodos();
+try {
+  displayName = localStorage.getItem(DISPLAY_NAME_KEY) || '';
+  if (displayName && !validDisplayName(displayName)) {
+    console.error('The saved planner display name has an unexpected format.');
+    displayName = '';
+  }
+} catch (error) {
+  console.error('Unable to load the planner display name:', error);
+  showToast('Your saved name could not be read on this device.');
+}
 render();
 refreshAccountUI();
+if (!displayName) {
+  elements.nameDialog.showModal();
+  elements.displayNameInput.focus();
+}
 initializeCloud();
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

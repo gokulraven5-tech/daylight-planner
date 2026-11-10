@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#f7f3ed">
+    <meta name="theme-color" content="#f6f5ef">
     <meta name="description" content="A gentle little planner for making room for what matters.">
     <title>Daylight — your gentle daily planner</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -187,7 +187,7 @@
             </div>
             <button class="close-button" id="close-dialog" type="button" aria-label="Close">×</button>
           </div>
-          <label class="field-label" for="plan-title">What’s on your mind?</label>
+          <label class="field-label" id="plan-title-label" for="plan-title">What’s on your mind?</label>
           <input id="plan-title" name="title" type="text" maxlength="80" placeholder="e.g. A slow morning walk" required autocomplete="off">
           <div class="field-row">
             <div class="field-group">
@@ -211,6 +211,20 @@
         </form>
       </dialog>
 
+      <dialog class="name-dialog" id="name-dialog" aria-labelledby="name-dialog-title">
+        <form id="name-form">
+          <p class="eyebrow">A LITTLE SPACE, JUST FOR YOU</p>
+          <h2 id="name-dialog-title">What should we call you?</h2>
+          <p class="name-dialog-copy">Your name will personalize your planner on this device.</p>
+          <label class="field-label" for="display-name">Your name</label>
+          <input id="display-name" name="display-name" type="text" minlength="3" maxlength="20"
+            pattern="[A-Za-z0-9_]{3,20}" autocomplete="nickname" autocapitalize="none"
+            spellcheck="false" placeholder="e.g. sruthik" required>
+          <p class="username-help">Use 3–20 letters, numbers, or underscores.</p>
+          <button class="save-button" id="save-display-name" type="submit">Personalize my planner <span aria-hidden="true">✳</span></button>
+        </form>
+      </dialog>
+
       <dialog class="cloud-dialog" id="cloud-dialog" aria-labelledby="cloud-dialog-title">
         <div class="cloud-dialog-content">
           <div class="dialog-top">
@@ -222,14 +236,6 @@
           </div>
           <p class="cloud-explanation" id="cloud-explanation"></p>
           <form id="cloud-signin-form">
-            <label class="field-label" for="cloud-signup-username">Username</label>
-            <div class="username-input-wrap">
-              <span aria-hidden="true">@</span>
-              <input id="cloud-signup-username" name="username" type="text" minlength="3" maxlength="20"
-                pattern="[A-Za-z0-9_]{3,20}" autocomplete="username" autocapitalize="none"
-                spellcheck="false" aria-describedby="cloud-signup-username-help" required>
-            </div>
-            <p class="username-help" id="cloud-signup-username-help">Choose 3–20 letters, numbers, or underscores. New accounts use this username; existing accounts keep their saved one.</p>
             <label class="field-label" for="cloud-email">Email address</label>
             <input id="cloud-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
             <button class="save-button" id="cloud-submit" type="submit">Email me a sign-in link <span aria-hidden="true">✉</span></button>
