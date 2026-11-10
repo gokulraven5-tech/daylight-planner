@@ -42,6 +42,16 @@ const elements = {
   todoList: $('#todo-list'),
   todoCount: $('#todo-count'),
   todoEmpty: $('#todo-empty'),
+  appShell: $('.app-shell'),
+  clipboardMode: $('#clipboard-mode'),
+  clipboardTitle: $('#clipboard-title'),
+  clipboardDate: $('#clipboard-date'),
+  clipboardList: $('#clipboard-list'),
+  clipboardCount: $('#clipboard-count'),
+  clipboardUndo: $('#clipboard-undo'),
+  clipboardUndoCopy: $('#clipboard-undo-copy'),
+  undoClipboardCompletion: $('#undo-clipboard-completion'),
+  openClipboard: $('#open-clipboard'),
   usernameDisplay: $('#username-display'),
   signInButton: $('#sign-in-button'),
   cloudDialog: $('#cloud-dialog'),
@@ -65,6 +75,15 @@ let plans = [];
 let todos = [];
 let activeView = 'todo';
 let displayName = '';
+let clipboardUndoStack = [];
+let clipboardOpeningTimer;
+const clipboardPhotoIds = [
+  'photo-1498050108023-c5249f4df085',
+  'photo-1507842217343-583bb7270b66',
+  'photo-1497250681960-ef046c08a56e',
+  'photo-1513364776144-60967b0f800f',
+  'photo-1500530855697-b586d89ba3ee',
+];
 let storageReady = true;
 let todoStorageReady = true;
 let toastTimer;
@@ -362,6 +381,7 @@ function applyCloudRow(row) {
   saveTodos();
   renderPlans();
   renderTodos();
+  if (!elements.clipboardMode.hidden) renderClipboard();
   applyingCloudData = false;
   if (hadLocalChanges) scheduleCloudSync();
 }
@@ -708,6 +728,152 @@ function renderTodos() {
       <button class="todo-delete" type="button" data-todo-delete="${escapeHTML(todo.id)}" aria-label="Remove to-do: ${escapeHTML(todo.title)}">×</button>
     </li>
   `).join('');
+}
+
+function clipboardPhotoFor(todo, index) {
+  const title = todo.title.toLowerCase();
+  const photoIndex = /read|book|study|learn|class|exam/.test(title)
+    ? 1
+    : /plant|garden|walk|outside|nature|water/.test(title)
+      ? 2
+      : /draw|paint|design|art|create|craft/.test(title)
+        ? 3
+        : /run|exercise|travel|trip|outside|picnic/.test(title)
+          ? 4
+          : index % clipboardPhotoIds.length;
+  return `https://images.unsplash.com/${clipboardPhotoIds[photoIndex]}?auto=format&fit=crop&w=720&q=80`;
+}
+
+function renderClipboard({ returningIds = [] } = {}) {
+  const remainingTodos = todos.filter((todo) => !todo.done);
+  const existingCardIds = new Set(
+    [...elements.clipboardList.querySelectorAll('[data-clipboard-card]')]
+      .map((card) => card.dataset.clipboardCard),
+  );
+  const returningCardIds = new Set(returningIds);
+  elements.clipboardCount.textContent = String(remainingTodos.length);
+  const owner = displayName ? `${escapeHTML(displayName)}’s` : 'My';
+  elements.clipboardTitle.innerHTML = `${owner} Clipboard <span aria-hidden="true">♡</span>`;
+  elements.clipboardMode.setAttribute('aria-label', `${displayName ? `${displayName}’s` : 'Your'} to-do clipboard`);
+  elements.clipboardDate.textContent = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date());
+  elements.clipboardList.innerHTML = remainingTodos.length
+    ? remainingTodos.map((todo, index) => {
+      const description = typeof todo.description === 'string' ? todo.description.trim() : '';
+      const dueDate = typeof todo.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(todo.dueDate)
+        ? new Date(`${todo.dueDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        : '';
+      const cardAnimation = returningCardIds.has(todo.id)
+        ? 'is-returning'
+        : !existingCardIds.has(todo.id) && !elements.clipboardMode.hidden
+          ? 'is-arriving'
+          : '';
+      return `
+        <article class="clipboard-task-card${cardAnimation ? ` ${cardAnimation}` : ''}${index === 0 ? ' is-newest' : ''}" data-clipboard-card="${escapeHTML(todo.id)}" style="--card-index:${index}">
+          <span class="clipboard-pushpin" aria-hidden="true"></span>
+          <div class="clipboard-photo">
+            <img src="${clipboardPhotoFor(todo, index)}" alt="" loading="${index < 3 ? 'eager' : 'lazy'}" referrerpolicy="no-referrer">
+            <span class="clipboard-photo-gloss" aria-hidden="true"></span>
+          </div>
+          <div class="clipboard-task-copy">
+            <label class="clipboard-check-label">
+              <input type="checkbox" data-clipboard-toggle="${escapeHTML(todo.id)}" aria-label="Complete ${escapeHTML(todo.title)}">
+              <span class="clipboard-check" aria-hidden="true"></span>
+              <span class="clipboard-task-title">${escapeHTML(todo.title)}</span>
+            </label>
+            ${description ? `<p class="clipboard-task-description">${escapeHTML(description)}</p>` : ''}
+            ${dueDate ? `<time class="clipboard-due-date" datetime="${escapeHTML(todo.dueDate)}">By ${escapeHTML(dueDate)}</time>` : ''}
+          </div>
+        </article>`;
+    }).join('')
+    : `<div class="clipboard-empty">
+        <span aria-hidden="true">✿</span>
+        <h2>All the little things are done.</h2>
+        <p>Take a breath. You’ve made room for something lovely.</p>
+      </div>`;
+  renderClipboardUndo();
+}
+
+function renderClipboardUndo() {
+  const lastUndo = clipboardUndoStack[clipboardUndoStack.length - 1];
+  elements.clipboardUndo.hidden = !lastUndo;
+  elements.clipboardUndoCopy.textContent = lastUndo
+    ? `Finished “${lastUndo.title}”.`
+    : '';
+  elements.undoClipboardCompletion.textContent = clipboardUndoStack.length > 1
+    ? `Undo (${clipboardUndoStack.length})`
+    : 'Undo';
+}
+
+function openClipboardMode() {
+  window.clearTimeout(clipboardOpeningTimer);
+  if (activeView !== 'todo') {
+    activeView = 'todo';
+    render();
+  }
+  renderClipboard();
+  elements.clipboardMode.hidden = false;
+  elements.clipboardMode.classList.add('is-opening');
+  elements.clipboardMode.setAttribute('aria-hidden', 'false');
+  elements.appShell.inert = true;
+  elements.appShell.setAttribute('aria-hidden', 'true');
+  document.body.classList.add('clipboard-open');
+  elements.clipboardTitle.focus();
+  clipboardOpeningTimer = window.setTimeout(() => {
+    elements.clipboardMode.classList.remove('is-opening');
+  }, 1200);
+}
+
+function closeClipboardMode() {
+  window.clearTimeout(clipboardOpeningTimer);
+  elements.clipboardMode.classList.remove('is-opening');
+  elements.clipboardMode.hidden = true;
+  elements.clipboardMode.setAttribute('aria-hidden', 'true');
+  elements.appShell.inert = false;
+  elements.appShell.removeAttribute('aria-hidden');
+  document.body.classList.remove('clipboard-open');
+  elements.openClipboard.focus();
+}
+
+function completeClipboardTodo(id) {
+  const todo = todos.find((item) => item.id === id);
+  const card = [...elements.clipboardList.querySelectorAll('[data-clipboard-card]')]
+    .find((item) => item.dataset.clipboardCard === id);
+  if (!todo || todo.done || !card) return;
+  todo.done = true;
+  clipboardUndoStack.push({ id: todo.id, title: todo.title });
+  if (!saveTodos()) {
+    todo.done = false;
+    clipboardUndoStack.pop();
+    return;
+  }
+  renderTodos();
+  elements.clipboardCount.textContent = String(todos.filter((item) => !item.done).length);
+  renderClipboardUndo();
+  card.classList.add('is-falling');
+  window.setTimeout(() => {
+    if (!elements.clipboardMode.hidden) renderClipboard();
+  }, 620);
+}
+
+function undoClipboardCompletion() {
+  const previous = clipboardUndoStack.pop();
+  if (!previous) return;
+  const todo = todos.find((item) => item.id === previous.id);
+  if (todo) {
+    todo.done = false;
+    if (!saveTodos()) {
+      todo.done = true;
+      clipboardUndoStack.push(previous);
+      renderClipboardUndo();
+      return;
+    }
+    renderTodos();
+  }
+  renderClipboard({ returningIds: [previous.id] });
 }
 
 function renderDailyPlans() {
@@ -1094,6 +1260,35 @@ elements.todoList.addEventListener('click', (event) => {
   todos = todos.filter((todo) => todo.id !== button.dataset.todoDelete);
   saveTodos();
   renderTodos();
+});
+
+elements.openClipboard.addEventListener('click', openClipboardMode);
+$('#close-clipboard').addEventListener('click', closeClipboardMode);
+$('#back-to-tasks').addEventListener('click', closeClipboardMode);
+elements.clipboardList.addEventListener('change', (event) => {
+  const checkbox = event.target.closest('[data-clipboard-toggle]');
+  if (checkbox?.checked) completeClipboardTodo(checkbox.dataset.clipboardToggle);
+});
+elements.undoClipboardCompletion.addEventListener('click', undoClipboardCompletion);
+document.addEventListener('keydown', (event) => {
+  if (elements.clipboardMode.hidden) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeClipboardMode();
+    return;
+  }
+  if (event.key === 'Tab') {
+    const focusable = [...elements.clipboardMode.querySelectorAll('button:not([disabled]), input:not([disabled])')];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 });
 
 elements.dialog.addEventListener('click', (event) => {

@@ -162,6 +162,10 @@ h2 { margin-bottom: 0; font-size: 19px; font-weight: 600; letter-spacing: -.45px
 .todo-heading h2 { font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-size: clamp(25px, 3vw, 34px); font-weight: 500; }
 .todo-heading h2 span { color: #cb8a7b; font-size: 15px; }
 .todo-subtitle { margin: 8px 0 0; color: #968d80; font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-size: 13px; font-style: italic; }
+.clipboard-entry { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; padding: 7px 10px; border: 1px solid rgba(169, 101, 91, .2); border-radius: 9px; background: rgba(255, 254, 250, .85); color: var(--rose-dark); font-size: 10px; cursor: pointer; transition: background .2s, border-color .2s, box-shadow .2s, transform .2s; }
+.clipboard-entry svg { width: 14px; height: 14px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; transition: transform .3s ease; }
+.clipboard-entry:hover { border-color: rgba(169, 101, 91, .48); background: #fffaf5; box-shadow: 0 4px 11px rgba(91, 73, 52, .1); transform: translateY(-1px); }
+.clipboard-entry:hover svg { transform: rotate(-8deg) translateY(-1px); }
 .todo-count { padding: 7px 11px; border-radius: 14px; background: #e9eee4; color: #5f7059; font-size: 10px; white-space: nowrap; }
 .todo-form { display: flex; gap: 9px; margin: 30px 0 15px 9px; }
 .todo-form input { width: 100%; min-width: 0; padding: 14px 15px; border: 1px dashed #d9cbb9; border-radius: 11px 13px 10px 12px; background: rgba(255,255,255,.7); color: var(--ink); font-size: 12px; }
@@ -427,6 +431,213 @@ h2 { margin-bottom: 0; font-size: 19px; font-weight: 600; letter-spacing: -.45px
   .today-button { padding: 8px 10px; }
 }
 
+.clipboard-mode[hidden] { display: none; }
+.clipboard-mode { position: fixed; z-index: 20; inset: 0; display: grid; overflow: hidden; place-items: center; padding: 24px; background:
+  radial-gradient(ellipse at 50% 20%, rgba(255, 232, 190, .34), transparent 43%),
+  radial-gradient(ellipse at 10% 90%, rgba(151, 110, 75, .2), transparent 42%),
+  repeating-linear-gradient(5deg, rgba(86, 57, 34, .12) 0 2px, transparent 2px 54px),
+  linear-gradient(115deg, #6e5038, #aa8058 34%, #77563b 70%, #b38b62); }
+.clipboard-mode::before { position: absolute; inset: 0; background:
+  radial-gradient(ellipse at 18% 25%, rgba(255, 239, 200, .48), transparent 26%),
+  linear-gradient(115deg, transparent 30%, rgba(255, 244, 215, .12) 48%, transparent 66%);
+  content: ""; pointer-events: none; animation: clipboard-sunlight 20s ease-in-out infinite alternate; }
+.clipboard-close { position: absolute; z-index: 5; top: max(20px, env(safe-area-inset-top)); right: max(22px, env(safe-area-inset-right)); display: grid; width: 42px; height: 42px; place-items: center; border: 0; border-radius: 50%; background: #f5dfb8; box-shadow: 0 3px 12px rgba(48, 34, 22, .2); color: #4a3525; font-size: 28px; line-height: 1; cursor: pointer; transition: transform .2s, background .2s; }
+.clipboard-close:hover { background: #fff0d4; transform: rotate(8deg); }
+.clipboard-scene { position: relative; z-index: 1; display: grid; width: 100%; height: 100%; max-height: 850px; place-items: center; overflow: auto; padding: 22px 0 34px; }
+.clipboard-board { position: relative; width: min(1080px, calc(100vw - 120px)); min-height: min(740px, calc(100dvh - 92px)); margin: auto; padding: 17px; border: 1px solid rgba(255, 219, 169, .37); border-radius: 23px 20px 25px 22px; background:
+  repeating-linear-gradient(8deg, transparent 0 21px, rgba(39, 23, 12, .13) 22px, transparent 24px 48px),
+  repeating-linear-gradient(92deg, rgba(255, 211, 157, .08) 0 2px, transparent 2px 43px),
+  linear-gradient(112deg, #6b432b, #b27b4f 13%, #73492e 30%, #a87549 52%, #69432d 73%, #b07d50);
+  box-shadow: 0 28px 65px rgba(39, 24, 13, .52), 0 9px 18px rgba(41, 28, 17, .35), inset 0 2px 3px rgba(255, 231, 197, .4), inset 0 -7px 12px rgba(46, 26, 13, .38); }
+.clipboard-mode.is-opening .clipboard-board { animation: clipboard-board-enter .72s cubic-bezier(.2,.8,.25,1) both; }
+.clipboard-board::before { position: absolute; inset: 7px; border: 1px solid rgba(255, 218, 172, .24); border-radius: 17px; content: ""; pointer-events: none; }
+.clipboard-paper { position: relative; min-height: calc(min(740px, 100dvh - 92px) - 36px); overflow: visible; border: 1px solid rgba(125, 91, 62, .32); border-radius: 4px 8px 5px 7px; background-color: #e9d8bd; background-image:
+  radial-gradient(ellipse at 9% 12%, rgba(145, 105, 72, .13), transparent 24%),
+  radial-gradient(ellipse at 82% 78%, rgba(165, 121, 82, .14), transparent 28%),
+  radial-gradient(ellipse at 55% 40%, rgba(255, 252, 227, .48), transparent 48%),
+  repeating-linear-gradient(0deg, rgba(107, 81, 57, .025) 0 1px, transparent 1px 5px),
+  linear-gradient(135deg, #f3e7d2, #e7d4b8 50%, #f0e2ca);
+  box-shadow: inset 0 2px 8px rgba(70, 46, 28, .2), 0 3px 7px rgba(40, 26, 14, .3); }
+.clipboard-paper::before { position: absolute; z-index: 0; inset: 0; border-radius: inherit; background:
+  radial-gradient(ellipse at 0 0, rgba(104, 75, 52, .12), transparent 24%),
+  radial-gradient(ellipse at 100% 100%, rgba(104, 75, 52, .12), transparent 26%),
+  repeating-linear-gradient(173deg, transparent 0 83px, rgba(118, 91, 66, .035) 84px, transparent 86px 132px);
+  content: ""; pointer-events: none; }
+.clipboard-paper-content { position: relative; z-index: 1; min-height: inherit; padding: 52px 44px 38px; }
+.clipboard-metal-clip { position: absolute; z-index: 3; top: -25px; left: 50%; width: 188px; height: 70px; border: 2px solid #6f6b63; border-radius: 15px 15px 9px 9px; background:
+  radial-gradient(circle at 50% 19%, #353431 0 9px, #aaa69b 10px 12px, transparent 13px),
+  linear-gradient(98deg, #77766f, #dad5c9 19%, #73716b 38%, #c7c2b6 58%, #6d6a64 80%, #b5b0a5);
+  box-shadow: 0 5px 9px rgba(39, 28, 19, .45), inset 0 2px 3px rgba(255, 255, 255, .72), inset 0 -3px 4px rgba(45, 40, 34, .35); transform: translateX(-50%); }
+.clipboard-mode.is-opening .clipboard-metal-clip { animation: clipboard-clip-settle .72s .18s cubic-bezier(.2,.8,.25,1) both; }
+.clipboard-metal-clip::before { position: absolute; right: -9px; bottom: -7px; left: -9px; height: 12px; border: 2px solid #77746d; border-radius: 3px 3px 7px 7px; background: linear-gradient(#d2cec3, #817e76 50%, #c3beb2); box-shadow: 0 3px 5px rgba(39, 28, 19, .36); content: ""; }
+.clipboard-metal-clip::after { position: absolute; top: 11px; left: 50%; width: 19px; height: 19px; border: 3px solid #aaa69b; border-radius: 50%; background: #494843; box-shadow: inset 0 2px 4px #242321; content: ""; transform: translateX(-50%); }
+.clipboard-metal-clip span { position: absolute; z-index: 1; top: 40px; left: 50%; width: 58px; height: 7px; border-radius: 2px 2px 5px 5px; background: linear-gradient(#6f6d66, #c0bcb2, #73716b); transform: translateX(-50%); }
+.clipboard-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 27px; padding: 0 4px; }
+.clipboard-kicker { margin: 0 0 8px; color: #8d6850; font-size: 9px; font-weight: 700; letter-spacing: 1.8px; }
+.clipboard-heading h1 { margin: 0; color: #443426; font-family: 'Yellowtail', 'Brush Script MT', 'Segoe Script', cursive; font-size: clamp(35px, 4vw, 49px); font-weight: 400; letter-spacing: .2px; line-height: 1; }
+.clipboard-heading h1 span { color: #a76e61; font-family: Georgia, serif; font-size: .46em; vertical-align: middle; }
+.clipboard-subtitle { margin: 6px 0 0; color: #735841; font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-size: 13px; font-style: italic; }
+.clipboard-date { margin: 5px 0 0; color: #9a755e; font-family: 'Yellowtail', 'Brush Script MT', cursive; font-size: 14px; letter-spacing: .2px; }
+.clipboard-count { display: flex; align-items: center; gap: 8px; margin: 0; padding: 9px 15px; border: 1.5px solid rgba(73, 52, 36, .65); border-radius: 50%; color: #493627; font-family: 'Yellowtail', 'Brush Script MT', cursive; font-size: 17px; transform: rotate(-4deg); }
+.clipboard-count strong { font-size: 24px; font-weight: 400; }
+.clipboard-tape { position: absolute; top: 94px; right: 24%; width: 95px; height: 22px; background: rgba(191, 145, 117, .38); box-shadow: 0 1px 2px rgba(74, 49, 31, .12); transform: rotate(2deg); }
+.clipboard-content { position: relative; min-height: 415px; }
+.clipboard-task-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 25px 23px; padding: 6px 2px 115px; }
+.clipboard-task-card { position: relative; align-self: start; min-width: 0; padding: 10px 10px 12px; border: 1px solid rgba(125, 106, 85, .3); border-radius: 3px 5px 4px 6px; background:
+  radial-gradient(ellipse at 22% 10%, rgba(255, 255, 255, .65), transparent 45%),
+  repeating-linear-gradient(5deg, rgba(122, 105, 84, .025) 0 1px, transparent 1px 4px),
+  #fffaf0;
+  box-shadow: 0 8px 13px rgba(56, 38, 23, .28), 0 2px 3px rgba(74, 53, 35, .2); transform: rotate(var(--card-rotation, -1.7deg)); transform-origin: 50% 18%; transition: box-shadow .22s, transform .22s; }
+.clipboard-mode.is-opening .clipboard-task-card { animation: clipboard-card-enter .55s cubic-bezier(.2,.75,.3,1) both; animation-delay: calc(180ms + var(--card-index) * 75ms); }
+.clipboard-task-card.is-arriving { animation: clipboard-card-arrive .5s cubic-bezier(.2,.75,.3,1) both; }
+.clipboard-task-card.is-returning { z-index: 2; animation: clipboard-card-return .52s cubic-bezier(.2,.8,.25,1) both; }
+.clipboard-task-card.is-newest::before { position: absolute; z-index: 2; top: -7px; right: 12px; width: 66px; height: 15px; background:
+  repeating-linear-gradient(90deg, transparent 0 4px, rgba(255,255,255,.13) 4px 5px),
+  linear-gradient(105deg, rgba(206, 154, 137, .86), rgba(221, 175, 155, .92) 52%, rgba(194, 139, 124, .82)); box-shadow: 0 1px 2px rgba(74, 49, 31, .12); content: ""; transform: rotate(4deg); }
+.clipboard-task-card:nth-child(3n + 2) { --card-rotation: 1.5deg; }
+.clipboard-task-card:nth-child(3n) { --card-rotation: -1deg; }
+.clipboard-task-card:hover { z-index: 2; box-shadow: 0 13px 20px rgba(56, 38, 23, .3); transform: translateY(-4px) rotate(0); }
+.clipboard-task-card.is-falling { z-index: 3; pointer-events: none; animation: clipboard-fall .62s cubic-bezier(.55,.02,.78,.3) forwards; }
+.clipboard-task-card.is-arriving .clipboard-pushpin { animation: clipboard-pin-tap .28s .42s ease-out both; }
+.clipboard-pushpin { position: absolute; z-index: 2; top: -13px; left: 50%; width: 21px; height: 21px; border-radius: 50%; background: var(--pin-color, #c97972); box-shadow: 1px 4px 5px rgba(49, 31, 19, .4), inset -3px -4px 5px rgba(67, 39, 30, .22), inset 2px 2px 4px rgba(255, 255, 255, .5); transform: translateX(-50%); }
+.clipboard-task-card:nth-child(4n + 2) .clipboard-pushpin { --pin-color: #d6a654; }
+.clipboard-task-card:nth-child(4n + 3) .clipboard-pushpin { --pin-color: #887b9c; }
+.clipboard-task-card:nth-child(4n) .clipboard-pushpin { --pin-color: #85966e; }
+.clipboard-photo { position: relative; height: clamp(110px, 15vw, 154px); overflow: hidden; background:
+  linear-gradient(135deg, #c2b396, #687566 48%, #d7b58d); }
+.clipboard-photo img { display: block; width: 100%; height: 100%; object-fit: cover; filter: sepia(.2) saturate(.88) contrast(.96); }
+.clipboard-photo-gloss { position: absolute; inset: 0; background: linear-gradient(145deg, rgba(255, 255, 255, .26), transparent 42%, rgba(69, 48, 29, .1)); pointer-events: none; }
+.clipboard-task-copy { padding: 12px 3px 0; }
+.clipboard-check-label { position: relative; display: flex; align-items: flex-start; gap: 8px; color: #43382d; cursor: pointer; }
+.clipboard-check-label input { position: absolute; width: 20px; height: 20px; margin: 0; opacity: 0; }
+.clipboard-check { position: relative; display: grid; width: 19px; height: 19px; min-width: 19px; place-items: center; border: 1.5px solid #7d6f5e; border-radius: 50%; color: white; transition: background .2s, border-color .2s, transform .2s; }
+.clipboard-check::after { width: 5px; height: 9px; border: solid white; border-width: 0 2px 2px 0; content: ""; opacity: 0; transform: translateY(-1px) rotate(45deg) scale(.25); transform-origin: center; }
+.clipboard-check-label input:checked + .clipboard-check { border-color: #72876a; background: #72876a; transform: scale(1.13); }
+.clipboard-check-label input:checked + .clipboard-check::after { animation: clipboard-check-draw .24s cubic-bezier(.2,.8,.3,1) forwards; }
+.clipboard-check-label input:focus-visible + .clipboard-check { outline: 3px solid rgba(169, 101, 91, .42); outline-offset: 3px; }
+.clipboard-task-title { min-width: 0; overflow-wrap: anywhere; font-family: 'Yellowtail', 'Brush Script MT', 'Segoe Script', cursive; font-size: 22px; line-height: 1.05; }
+.clipboard-task-description { margin: 5px 0 0 27px; color: #725d49; font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-size: 11px; font-style: italic; line-height: 1.45; }
+.clipboard-due-date { display: block; margin: 7px 0 0 27px; color: #8d655b; font-size: 9px; letter-spacing: .25px; }
+.clipboard-note { position: absolute; right: 6px; bottom: 5px; display: grid; width: 180px; min-height: 106px; place-content: center; padding: 14px; border: 1px solid rgba(164, 112, 99, .28); background:
+  repeating-linear-gradient(0deg, transparent 0 22px, rgba(121, 86, 68, .1) 23px, transparent 24px),
+  linear-gradient(135deg, #e7b6a8, #dca79b);
+  box-shadow: 0 5px 10px rgba(63, 42, 27, .23); color: #513c31; text-align: center; transform: rotate(3deg); }
+.clipboard-note p { margin: 0; font-family: 'Yellowtail', 'Brush Script MT', cursive; font-size: 22px; line-height: 1.15; }
+.clipboard-note > span:last-child { position: absolute; right: 13px; bottom: 7px; font-family: Georgia, serif; }
+.clipboard-note-flower { position: absolute; top: -22px; left: -12px; color: #84916f; font-size: 27px; text-shadow: 1px 3px 3px rgba(62, 47, 31, .25); transform: rotate(-18deg); }
+.clipboard-empty { grid-column: 1 / -1; display: grid; min-height: 240px; place-content: center; padding: 20px; color: #594535; text-align: center; animation: clipboard-empty-arrive .5s ease-out both; }
+.clipboard-empty > span { color: #a96a5e; font-size: 38px; animation: clipboard-flower-bloom .7s cubic-bezier(.2,.8,.3,1) both; }
+.clipboard-empty h2 { margin: 8px 0 5px; font-family: 'Yellowtail', 'Brush Script MT', cursive; font-size: 30px; font-weight: 400; }
+.clipboard-empty p { margin: 0; color: #765d47; font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-size: 13px; font-style: italic; }
+.clipboard-undo { position: absolute; z-index: 4; left: 50%; bottom: 19px; display: flex; align-items: center; gap: 14px; max-width: calc(100% - 24px); padding: 9px 12px 9px 15px; border: 1px solid rgba(83, 61, 43, .22); border-radius: 30px; background: rgba(255, 250, 239, .94); box-shadow: 0 5px 15px rgba(53, 36, 22, .2); color: #4f3d2e; font-size: 11px; transform: translateX(-50%); }
+.clipboard-undo[hidden] { display: none; }
+.clipboard-undo button { padding: 6px 11px; border: 0; border-radius: 20px; background: #e8eee3; color: #52654b; font-size: 10px; font-weight: 700; cursor: pointer; }
+.clipboard-undo button:hover { background: #dbe6d4; }
+.clipboard-back { position: absolute; z-index: 5; bottom: max(22px, env(safe-area-inset-bottom)); left: max(24px, env(safe-area-inset-left)); display: inline-flex; align-items: center; gap: 9px; padding: 12px 19px; border: 1px solid rgba(100, 72, 48, .24); border-radius: 30px; background: #f3dfbb; box-shadow: 0 5px 13px rgba(44, 30, 18, .28); color: #4b3727; font-family: 'Yellowtail', 'Brush Script MT', cursive; font-size: 19px; cursor: pointer; transition: background .2s, transform .2s; }
+.clipboard-back:hover { background: #fff0d3; transform: translateY(-2px); }
+.clipboard-back span { font-family: Georgia, serif; font-size: 18px; }
+@keyframes clipboard-fall {
+  0% { opacity: 1; transform: translateY(0) rotate(var(--card-rotation)) scale(1); }
+  20% { opacity: 1; transform: translateY(-13px) rotate(calc(var(--card-rotation) - 2deg)) scale(1.035); }
+  100% { opacity: 0; transform: translate(26px, 260px) rotate(calc(var(--card-rotation) + 22deg)) scale(.82); }
+}
+@keyframes clipboard-sunlight {
+  from { opacity: .62; transform: translateX(-3%) translateY(-1%); }
+  to { opacity: 1; transform: translateX(3%) translateY(2%); }
+}
+@keyframes clipboard-board-enter {
+  from { opacity: 0; transform: translateY(22px) scale(.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes clipboard-clip-settle {
+  0% { transform: translate(-50%, -17px) rotate(-2deg); }
+  68% { transform: translate(-50%, 3px) rotate(1deg); }
+  84% { transform: translate(-50%, -2px) rotate(-.5deg); }
+  100% { transform: translate(-50%, 0) rotate(0); }
+}
+@keyframes clipboard-card-enter {
+  from { opacity: 0; transform: translateY(20px) rotate(calc(var(--card-rotation) - 5deg)) scale(.96); }
+  to { opacity: 1; transform: translateY(0) rotate(var(--card-rotation)) scale(1); }
+}
+@keyframes clipboard-card-arrive {
+  from { opacity: 0; transform: translateY(16px) rotate(calc(var(--card-rotation) - 5deg)) scale(.94); }
+  to { opacity: 1; transform: translateY(0) rotate(var(--card-rotation)) scale(1); }
+}
+@keyframes clipboard-card-return {
+  from { opacity: 0; transform: translateY(42px) rotate(calc(var(--card-rotation) + 10deg)) scale(.9); }
+  72% { opacity: 1; transform: translateY(-3px) rotate(calc(var(--card-rotation) - 1deg)) scale(1.015); }
+  to { opacity: 1; transform: translateY(0) rotate(var(--card-rotation)) scale(1); }
+}
+@keyframes clipboard-pin-tap {
+  0% { transform: translateX(-50%) translateY(-8px) scale(.9); }
+  65% { transform: translateX(-50%) translateY(2px) scale(1.06); }
+  100% { transform: translateX(-50%) translateY(0) scale(1); }
+}
+@keyframes clipboard-check-draw {
+  to { opacity: 1; transform: translateY(-1px) rotate(45deg) scale(1); }
+}
+@keyframes clipboard-empty-arrive {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes clipboard-flower-bloom {
+  from { opacity: 0; transform: rotate(-35deg) scale(.55); }
+  to { opacity: 1; transform: rotate(0) scale(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  .clipboard-mode::before { animation: none !important; }
+}
+
+body.clipboard-open { overflow: hidden; }
+@media (max-width: 760px) {
+  .clipboard-mode { padding: 12px; }
+  .clipboard-scene { align-items: start; max-height: none; padding: 54px 0 75px; }
+  .clipboard-board { width: min(100%, 620px); min-height: 670px; padding: 12px; border-radius: 19px; }
+  .clipboard-paper { min-height: 644px; }
+  .clipboard-paper-content { padding: 53px 24px 30px; }
+  .clipboard-metal-clip { width: 150px; height: 58px; }
+  .clipboard-metal-clip span { top: 35px; }
+  .clipboard-heading { gap: 8px; margin-bottom: 20px; }
+  .clipboard-heading h1 { font-size: clamp(31px, 7vw, 42px); }
+  .clipboard-count { gap: 5px; padding: 7px 10px; font-size: 14px; }
+  .clipboard-count strong { font-size: 20px; }
+  .clipboard-tape { top: 90px; right: 14%; width: 70px; height: 18px; }
+  .clipboard-task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 16px; padding-bottom: 125px; }
+  .clipboard-photo { height: clamp(95px, 27vw, 145px); }
+  .clipboard-task-title { font-size: 19px; }
+  .clipboard-note { right: 4px; bottom: 8px; width: 150px; min-height: 88px; }
+  .clipboard-note p { font-size: 19px; }
+}
+@media (max-width: 430px) {
+  .clipboard-mode { padding: 8px; }
+  .clipboard-close { top: max(12px, env(safe-area-inset-top)); right: max(13px, env(safe-area-inset-right)); width: 36px; height: 36px; font-size: 25px; }
+  .clipboard-scene { padding-top: 45px; }
+  .clipboard-board { min-height: 780px; padding: 9px; }
+  .clipboard-paper { min-height: 760px; }
+  .clipboard-paper-content { padding: 50px 14px 25px; }
+  .clipboard-metal-clip { top: -19px; width: 125px; height: 51px; }
+  .clipboard-metal-clip::after { top: 8px; }
+  .clipboard-metal-clip span { top: 31px; }
+  .clipboard-heading { align-items: start; }
+  .clipboard-kicker { max-width: 150px; font-size: 7px; letter-spacing: 1.1px; }
+  .clipboard-heading h1 { max-width: 205px; font-size: 31px; }
+  .clipboard-subtitle { font-size: 11px; }
+  .clipboard-count { display: grid; gap: 0; padding: 6px 8px; text-align: center; }
+  .clipboard-count strong { font-size: 18px; }
+  .clipboard-count span { font-size: 11px; }
+  .clipboard-tape { top: 84px; right: 12%; }
+  .clipboard-task-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 8px 8px 130px; }
+  .clipboard-task-card { display: grid; grid-template-columns: 39% minmax(0, 1fr); gap: 10px; align-items: center; padding: 9px; }
+  .clipboard-photo { height: 104px; }
+  .clipboard-task-copy { min-width: 0; padding: 2px 0; }
+  .clipboard-task-title { font-size: 20px; }
+  .clipboard-task-description { font-size: 10px; }
+  .clipboard-note { right: 8px; bottom: 12px; }
+  .clipboard-undo { bottom: 9px; gap: 8px; padding: 7px 9px 7px 12px; font-size: 10px; }
+  .clipboard-back { bottom: max(14px, env(safe-area-inset-bottom)); left: max(14px, env(safe-area-inset-left)); padding: 9px 14px; font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clipboard-task-card.is-falling { animation: none; opacity: 0; }
 }
