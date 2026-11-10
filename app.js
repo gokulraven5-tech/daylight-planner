@@ -43,6 +43,7 @@ const elements = {
   cloudExplanation: $('#cloud-explanation'),
   cloudForm: $('#cloud-signin-form'),
   cloudEmail: $('#cloud-email'),
+  cloudSignupUsername: $('#cloud-signup-username'),
   cloudSubmit: $('#cloud-submit'),
   cloudUsernameForm: $('#cloud-username-form'),
   cloudUsername: $('#cloud-username'),
@@ -64,6 +65,7 @@ let toastTimer;
 let cloudClient = null;
 let cloudUser = null;
 let cloudUsername = null;
+let cloudRequestedUsername = null;
 let cloudProfileLoaded = false;
 let cloudChannel = null;
 let cloudReady = false;
@@ -215,7 +217,7 @@ function refreshAccountUI() {
   elements.cloudUsernameForm.hidden = !cloudUser || !cloudProfileLoaded || Boolean(cloudUsername);
   elements.cloudSignout.hidden = !cloudUser;
   elements.cloudDialogClose.hidden = Boolean(cloudUser && cloudProfileLoaded && !cloudUsername);
-  elements.cloudUsername.value = cloudUsername || '';
+  elements.cloudUsername.value = cloudUsername || cloudRequestedUsername || '';
   const storageCopy = cloudUsername
     ? 'Your plans and to-dos sync to your account across devices.'
     : cloudUser && cloudProfileLoaded && !cloudUsername
@@ -231,7 +233,7 @@ function refreshAccountUI() {
       : cloudProfileLoaded
         ? 'Choose a unique username to finish setting up your account.'
         : 'Loading your private account planner…'
-    : 'Sign in with an email link to access your personal planner on any device.';
+    : 'Choose a username and sign in with an email link to access your personal planner on any device.';
 }
 
 function openAccountDialog() {
@@ -240,7 +242,7 @@ function openAccountDialog() {
   elements.cloudDialog.showModal();
   if (cloudUser && !cloudReady) handleCloudSession(cloudUser);
   if (cloudUser && cloudProfileLoaded && !cloudUsername) elements.cloudUsername.focus();
-  else if (!cloudUser) elements.cloudEmail.focus();
+  else if (!cloudUser) elements.cloudSignupUsername.focus();
 }
 
 function pendingSyncKey(userId) {
@@ -350,6 +352,7 @@ async function loadCloudAccount(user, version) {
   const hasPendingChanges = localStorage.getItem(pendingKey) === 'true';
   cloudUser = user;
   cloudUsername = null;
+  cloudRequestedUsername = null;
   cloudProfileLoaded = false;
   cloudReady = false;
   cloudDirty = false;
@@ -373,7 +376,7 @@ async function loadCloudAccount(user, version) {
   if (plannerResult.error) throw plannerResult.error;
   if (profileResult.error) throw profileResult.error;
   const remotePlanner = plannerResult.data;
-  const profile = profileResult.data;
+  let profile = profileResult.data;
   if (version !== cloudSessionVersion) return;
   const hasLocalEdits = cloudDirty || localStorage.getItem(pendingKey) === 'true';
   const localPlans = cloudDirty ? plans : accountPlans;
@@ -381,12 +384,33 @@ async function loadCloudAccount(user, version) {
   if (remotePlanner && (!validPlans(remotePlanner.plans) || !validTodos(remotePlanner.todos))) {
     throw new Error('The saved planner data has an unexpected format.');
   }
+  const requestedUsername = user.user_metadata?.username;
+  if (!profile && typeof requestedUsername === 'string' && /^[a-z0-9_]{3,20}$/.test(requestedUsername)) {
+    const { data, error } = await cloudClient
+      .from('planner_profiles')
+      .insert({
+        user_id: user.id,
+        username: requestedUsername,
+        updated_at: new Date().toISOString(),
+      })
+      .select('username')
+      .single();
+    if (error?.code === '23505') {
+      cloudRequestedUsername = requestedUsername;
+    } else if (error) {
+      throw error;
+    } else {
+      profile = data;
+    }
+  }
+  if (version !== cloudSessionVersion) return;
   if (profile && (typeof profile.username !== 'string' || !/^[a-z0-9_]{3,20}$/.test(profile.username))) {
     throw new Error('The account username has an unexpected format.');
   }
 
   cloudProfileLoaded = true;
   cloudUsername = profile?.username || null;
+  if (cloudUsername) cloudRequestedUsername = null;
   let shouldSync = false;
   if (remotePlanner) {
     plans = hasPendingChanges || hasLocalEdits
@@ -422,7 +446,11 @@ async function loadCloudAccount(user, version) {
   if (!cloudUsername) {
     if (!elements.cloudDialog.open) elements.cloudDialog.showModal();
     elements.cloudUsername.focus();
-    elements.cloudFeedback.textContent = 'Choose a unique username before using your account.';
+    elements.cloudFeedback.textContent = cloudRequestedUsername
+      ? 'That username is already taken. Choose another one to finish creating your account.'
+      : 'Choose a unique username before using your account.';
+  } else if (elements.cloudDialog.open) {
+    elements.cloudDialog.close();
   }
 }
 
@@ -440,6 +468,7 @@ function handleCloudSession(user) {
     cloudChannel = null;
     cloudUser = null;
     cloudUsername = null;
+    cloudRequestedUsername = null;
     cloudProfileLoaded = false;
     cloudReady = false;
     cloudDirty = false;
@@ -849,12 +878,21 @@ elements.cloudForm.addEventListener('submit', async (event) => {
     return;
   }
   const email = elements.cloudEmail.value.trim();
+  const username = elements.cloudSignupUsername.value.trim().replace(/^@/, '').toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+    elements.cloudFeedback.textContent = 'Use 3–20 letters, numbers, or underscores for your username.';
+    elements.cloudSignupUsername.focus();
+    return;
+  }
   elements.cloudSubmit.disabled = true;
   elements.cloudFeedback.textContent = 'Sending your sign-in link…';
   try {
     const { error } = await cloudClient.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${location.origin}${location.pathname}` },
+      options: {
+        emailRedirectTo: `${location.origin}${location.pathname}`,
+        data: { username },
+      },
     });
     if (error) throw error;
     elements.cloudFeedback.textContent = 'Check your email and open the sign-in link on this device.';
@@ -893,6 +931,7 @@ elements.cloudUsernameForm.addEventListener('submit', async (event) => {
     if (error?.code === '23505') throw new Error('That username is already taken. Try another one.');
     if (error) throw error;
     cloudUsername = username;
+    cloudRequestedUsername = null;
     refreshAccountUI();
     elements.cloudFeedback.textContent = `Your account is ready as @${username}.`;
     if (cloudDirty) scheduleCloudSync();

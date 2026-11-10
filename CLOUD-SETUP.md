@@ -16,6 +16,6 @@ If the database tables are missing, run [`supabase-setup.sql`](./supabase-setup.
 
 ## First sign-in
 
-Enter an email address and open the sign-in link on the device where you want to use the planner. New accounts must choose a unique username of 3–20 letters, numbers, or underscores. If the account has no planner data yet and the device already has local plans, the app asks before importing them.
+Enter a username and email address, then open the emailed sign-in link. For a new account, the chosen username is saved automatically and appears in the header after sign-in. Existing accounts keep their saved username. Usernames must be unique and contain 3–20 letters, numbers, or underscores. If the account has no planner data yet and the device already has local plans, the app asks before importing them.
 
 Planner edits are saved locally and synced to that account. UI/code deployments do not modify planner data. Use the planner's backup controls for an additional copy of your data.

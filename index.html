@@ -222,6 +222,14 @@
           </div>
           <p class="cloud-explanation" id="cloud-explanation"></p>
           <form id="cloud-signin-form">
+            <label class="field-label" for="cloud-signup-username">Username</label>
+            <div class="username-input-wrap">
+              <span aria-hidden="true">@</span>
+              <input id="cloud-signup-username" name="username" type="text" minlength="3" maxlength="20"
+                pattern="[A-Za-z0-9_]{3,20}" autocomplete="username" autocapitalize="none"
+                spellcheck="false" aria-describedby="cloud-signup-username-help" required>
+            </div>
+            <p class="username-help" id="cloud-signup-username-help">Choose 3–20 letters, numbers, or underscores. New accounts use this username; existing accounts keep their saved one.</p>
             <label class="field-label" for="cloud-email">Email address</label>
             <input id="cloud-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
             <button class="save-button" id="cloud-submit" type="submit">Email me a sign-in link <span aria-hidden="true">✉</span></button>
